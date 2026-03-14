@@ -21,7 +21,8 @@ if (Astro.request.method === 'POST') {
   const precio      = parseFloat(formData.get('precio')?.toString() ?? '0') || 0;
   const costo       = parseFloat(formData.get('costo')?.toString() ?? '0') || 0;
   const stock       = parseInt(formData.get('stock')?.toString() ?? '0') || 0;
-  const activo      = formData.get('activo') === 'on';
+  const activo         = formData.get('activo') === 'on';
+  const enviarACocina  = formData.get('enviarACocina') === 'on';
 
   if (!nombre) {
     error = 'El nombre de la receta es obligatorio.';
@@ -33,7 +34,7 @@ if (Astro.request.method === 'POST') {
     if (ingredientes.length === 0) {
       error = 'La receta debe tener al menos un ingrediente.';
     } else {
-      await store.updateProducto(id!, { nombre, codigo, imagen, descripcion, precio, costo, stock, activo, tipoProducto: 'compuesto' });
+      await store.updateProducto(id!, { nombre, codigo, imagen, descripcion, precio, costo, stock, activo, enviarACocina, tipoProducto: 'compuesto' });
       await store.setComponentesProducto(id!, ingredientes);
       return Astro.redirect('/recetas');
     }
@@ -140,6 +141,13 @@ const ingredientesInit = ingredientesActuales.map(c => ({
         <h2 class="section-title"><span class="material-icons-round">toggle_on</span> Estado</h2>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500">
           <input type="checkbox" name="activo" checked={receta.activo} /> Receta activa (se mostrará en búsquedas)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;margin-top:10px">
+          <input type="checkbox" name="enviarACocina" checked={receta.enviarACocina || undefined} />
+          <span>
+            Enviar a cocina
+            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:4px">— aparecerá en las comandas de cocina al seleccionar esta receta</span>
+          </span>
         </label>
       </div>
     </div>

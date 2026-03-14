@@ -49,9 +49,9 @@ if (Astro.request.method === 'POST') {
 const pedidos    = await store.getPedidos();
 const pendientes = pedidos.filter(p => p.estado === 'confirmado');
 
-// Pasar solo los campos necesarios al cliente para aligerar el JSON
+// Solo productos activos con enviarACocina=true aparecen en el selector de comandas
 const productos = (await store.getProductos())
-  .filter(p => p.activo)
+  .filter(p => p.activo && p.enviarACocina)
   .map(p => ({
     id:     String(p.id),
     nombre: p.nombre,

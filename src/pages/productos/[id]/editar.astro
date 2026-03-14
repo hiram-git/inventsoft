@@ -65,6 +65,7 @@ if (Astro.request.method === 'POST') {
     maximoInventario: parseFloat(maxStr) || 0,
     imagen,
     activo: formData.get('activo') === 'on',
+    enviarACocina: formData.get('enviarACocina') === 'on',
   };
 
   await store.updateProducto(id!, data);
@@ -281,6 +282,13 @@ const paC = producto.precioC;
       </h2>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;">
         <input type="checkbox" name="activo" checked={producto.activo || undefined} /> Producto activo
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;margin-top:10px">
+        <input type="checkbox" name="enviarACocina" checked={producto.enviarACocina || undefined} />
+        <span>
+          Enviar a cocina
+          <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:4px">— aparecerá en las comandas de cocina</span>
+        </span>
       </label>
     </div>
 
