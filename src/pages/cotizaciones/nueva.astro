@@ -49,8 +49,8 @@ const productos = allProductos.filter(p => p.activo);
 const servicios = allServicios.filter(s => s.activo);
 
 const allItems = [
-  ...productos.map(p => ({ tipo: 'producto', id: String(p.id), nombre: p.nombre, precio: p.precio })),
-  ...servicios.map(s => ({ tipo: 'servicio', id: String(s.id), nombre: s.nombre, precio: s.precio })),
+  ...productos.map(p => ({ tipo: 'producto', id: String(p.id), nombre: p.nombre, precio: p.precio, esKit: p.tipoProducto === 'kit' })),
+  ...servicios.map(s => ({ tipo: 'servicio', id: String(s.id), nombre: s.nombre, precio: s.precio, esKit: false })),
 ];
 ---
 
@@ -226,12 +226,16 @@ const allItems = [
     var el = document.getElementById('searchResults');
     if (!results.length) { el.style.display = 'none'; return; }
     el.innerHTML = results.slice(0, 25).map(function(i) {
+      var kitBadge = i.esKit
+        ? '<span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:10px;background:#fef9c3;color:#854d0e;white-space:nowrap">Kit</span>'
+        : '';
       return '<div class="search-result-item"'
         + ' data-id="' + escHtml(i.id) + '"'
         + ' data-tipo="' + escHtml(i.tipo) + '"'
         + ' data-nombre="' + escHtml(i.nombre) + '"'
         + ' data-precio="' + i.precio + '"'
         + ' onmousedown="selectItem(this)">'
+        + kitBadge
         + '<span class="item-name">' + escHtml(i.nombre) + '</span>'
         + '<span class="item-price">' + fmt(i.precio) + '</span>'
         + '</div>';

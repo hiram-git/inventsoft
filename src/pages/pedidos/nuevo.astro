@@ -56,7 +56,13 @@ const [clientes, almacenes, allProductos] = await Promise.all([
 ]);
 const productos = allProductos.filter(p => p.activo);
 
-const allItems = productos.map(p => ({ id: String(p.id), nombre: p.nombre, precio: p.precio, stock: p.stock ?? 0 }));
+const allItems = productos.map(p => ({
+  id: String(p.id),
+  nombre: p.nombre,
+  precio: p.precio,
+  stock: p.tipoProducto === 'kit' ? 999999 : (p.stock ?? 0),
+  esKit: p.tipoProducto === 'kit',
+}));
 ---
 
 <AdminLayout title="Nuevo Pedido">
@@ -224,15 +230,22 @@ const allItems = productos.map(p => ({ id: String(p.id), nombre: p.nombre, preci
     var el = document.getElementById('searchResults');
     if (!results.length) { el.style.display = 'none'; return; }
     el.innerHTML = results.slice(0, 25).map(function(i) {
+      var kitBadge = i.esKit
+        ? '<span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:10px;background:#fef9c3;color:#854d0e;white-space:nowrap">Kit</span>'
+        : '';
+      var stockInfo = !i.esKit
+        ? '<span class="item-stock">Stock: ' + i.stock + '</span>'
+        : '';
       return '<div class="search-result-item"'
         + ' data-id="' + escHtml(i.id) + '"'
         + ' data-nombre="' + escHtml(i.nombre) + '"'
         + ' data-precio="' + i.precio + '"'
         + ' data-stock="' + i.stock + '"'
         + ' onmousedown="selectItem(this)">'
+        + kitBadge
         + '<span class="item-name">' + escHtml(i.nombre) + '</span>'
         + '<span class="item-price">' + fmt(i.precio) + '</span>'
-        + '<span class="item-stock">Stock: ' + i.stock + '</span>'
+        + stockInfo
         + '</div>';
     }).join('');
     el.style.display = 'block';
