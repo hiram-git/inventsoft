@@ -176,6 +176,8 @@ export const servicios = pgTable('servicios', {
   precioC: jsonb('precio_c').$type<PrecioNivel>(),
   imagen: text('imagen').default(''),
   activo: boolean('activo').default(true).notNull(),
+  // Comandas: indica si este servicio debe enviarse a cocina al crear una comanda
+  enviarACocina: boolean('enviar_a_cocina').default(false).notNull(),
 });
 
 // --- Facturas ---
