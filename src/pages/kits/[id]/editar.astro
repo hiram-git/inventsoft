@@ -1,0 +1,336 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+const { id } = Astro.params;
+const kit = await store.getProducto(id!);
+
+if (!kit || kit.tipoProducto !== 'kit') {
+  return Astro.redirect('/kits');
+}
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+
+  const nombre = formData.get('nombre')?.toString() ?? '';
+  const codigo = formData.get('codigo')?.toString() ?? '';
+  const imagen = formData.get('imagen')?.toString() ?? '';
+  const precioStr = formData.get('precio')?.toString() ?? '0';
+  const precio = parseFloat(precioStr) || 0;
+  const activo = formData.get('activo') === 'on';
+  const descripcion = formData.get('descripcion')?.toString() ?? '';
+
+  if (!nombre) {
+    error = 'El nombre del kit es obligatorio.';
+  } else {
+    const componentesJson = formData.get('componentes_json')?.toString() ?? '[]';
+    let componentes: { componenteId: string; componenteNombre: string; cantidad: number; unidad: string }[] = [];
+    try { componentes = JSON.parse(componentesJson); } catch { componentes = []; }
+
+    if (componentes.length === 0) {
+      error = 'El kit debe tener al menos un componente.';
+    } else {
+      await store.updateProducto(id!, { nombre, codigo, imagen, descripcion, precio, activo, tipoProducto: 'kit' });
+      await store.setComponentesProducto(id!, componentes);
+      return Astro.redirect('/kits');
+    }
+  }
+}
+
+const [allProductos, componentesActuales] = await Promise.all([
+  store.getProductos(),
+  store.getComponentesProducto(id!),
+]);
+
+const productosDisponibles = allProductos.filter(p => p.activo && p.tipoProducto !== 'kit');
+
+const compItems = productosDisponibles.map(p => ({
+  id: String(p.id),
+  nombre: p.nombre,
+  precio: p.precio,
+  stock: p.stock ?? 0,
+}));
+
+const componentesInit = componentesActuales.map(c => ({
+  componenteId: c.componenteId,
+  componenteNombre: c.componenteNombre,
+  cantidad: c.cantidad,
+  unidad: c.unidad ?? '',
+}));
+---
+
+<AdminLayout title={`Editar Kit — ${kit.nombre}`}>
+  <div class="page-header">
+    <h1><span class="material-icons-round">workspaces</span> Editar Kit</h1>
+    <a href="/kits" class="btn btn-secondary">
+      <span class="material-icons-round">arrow_back</span> Volver
+    </a>
+  </div>
+
+  {error && <div class="alert alert-error">{error}</div>}
+
+  <script is:inline set:html={`window.__kitCompItems = ${JSON.stringify(compItems)};`}></script>
+  <script is:inline set:html={`window.__kitCompInit = ${JSON.stringify(componentesInit)};`}></script>
+
+  <form method="POST" id="kitForm">
+    <input type="hidden" name="componentes_json" id="componentesJson" value="[]" />
+
+    <!-- Tabs nav -->
+    <div class="tabs-nav">
+      <button type="button" class="tab-btn active" onclick="switchTab('general', this)">
+        <span class="material-icons-round" style="font-size:16px">badge</span> General
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('componentes', this)">
+        <span class="material-icons-round" style="font-size:16px">format_list_bulleted</span>
+        Componentes <span id="compCount" class="comp-count">{componentesActuales.length}</span>
+      </button>
+    </div>
+
+    <!-- TAB: General -->
+    <div id="tab-general" class="tab-panel">
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">badge</span> Identificación</h2>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>Nombre <span style="color:var(--danger)">*</span></label>
+            <input type="text" name="nombre" class="form-control" required value={kit.nombre} />
+          </div>
+          <div class="form-group">
+            <label>Código</label>
+            <input type="text" name="codigo" class="form-control" value={kit.codigo ?? ''} />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descripción</label>
+          <textarea name="descripcion" class="form-control" rows="3">{kit.descripcion ?? ''}</textarea>
+        </div>
+        <div class="form-group" style="margin-top:4px">
+          <label>URL de Imagen</label>
+          <input type="url" name="imagen" class="form-control" value={kit.imagen ?? ''} />
+          <span style="font-size:0.75rem;color:var(--text-muted)">Se mostrará en el buscador y en comandas</span>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">payments</span> Precio del Kit</h2>
+        <div style="max-width:280px">
+          <div class="form-group">
+            <label>Precio de venta <span style="color:var(--danger)">*</span></label>
+            <input type="number" name="precio" class="form-control" step="0.01" min="0" value={kit.precio} required />
+            <span style="font-size:0.75rem;color:var(--text-muted)">Precio total del kit (puede diferir de la suma de componentes)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">toggle_on</span> Estado</h2>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500">
+          <input type="checkbox" name="activo" checked={kit.activo} /> Kit activo (se mostrará en búsquedas)
+        </label>
+      </div>
+    </div>
+
+    <!-- TAB: Componentes -->
+    <div id="tab-componentes" class="tab-panel" style="display:none">
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">format_list_bulleted</span> Componentes del Kit</h2>
+        <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:16px">
+          Al facturar un kit, el inventario se descuenta individualmente por cada componente.
+        </p>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:16px;align-items:end">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Producto</label>
+            <div style="position:relative">
+              <input
+                type="text"
+                id="searchComp"
+                class="form-control"
+                placeholder="Buscar producto..."
+                autocomplete="off"
+                oninput="filterComps(this.value)"
+                onfocus="filterComps(this.value)"
+                onblur="hideCompResults()"
+              />
+              <div id="compResults" class="search-dropdown" style="display:none"></div>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Cantidad</label>
+            <input type="number" id="compCantidad" class="form-control" min="0.01" step="0.01" value="1" />
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Unidad</label>
+            <input type="text" id="compUnidad" class="form-control" placeholder="pza, kg, lt…" />
+          </div>
+          <button type="button" class="btn btn-success" onclick="addComp()" style="height:38px">
+            <span class="material-icons-round" style="font-size:18px">add</span> Agregar
+          </button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Cantidad</th>
+              <th>Unidad</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="compBody">
+            <tr id="compEmpty">
+              <td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">No se han agregado componentes.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="actions-bar">
+      <a href="/kits" class="btn btn-secondary">Cancelar</a>
+      <button type="submit" class="btn btn-primary">
+        <span class="material-icons-round">save</span> Guardar Cambios
+      </button>
+    </div>
+  </form>
+</AdminLayout>
+
+<script is:inline>
+var __compItems = window.__kitCompItems || [];
+var selectedComp = null;
+// Initialize with existing components
+var componentes = (window.__kitCompInit || []).map(function(c) {
+  return { componenteId: String(c.componenteId), componenteNombre: c.componenteNombre, cantidad: Number(c.cantidad), unidad: c.unidad || '' };
+});
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(n) { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
+
+function filterComps(q) {
+  q = (q || '').toLowerCase().trim();
+  var results = q.length > 0
+    ? __compItems.filter(function(i) { return i.nombre.toLowerCase().includes(q); })
+    : __compItems.slice(0, 30);
+  var el = document.getElementById('compResults');
+  if (!results.length) { el.style.display = 'none'; return; }
+  el.innerHTML = results.slice(0, 25).map(function(i) {
+    return '<div class="search-result-item"'
+      + ' data-id="' + escHtml(i.id) + '"'
+      + ' data-nombre="' + escHtml(i.nombre) + '"'
+      + ' data-precio="' + i.precio + '"'
+      + ' onmousedown="selectComp(this)">'
+      + '<span class="item-name">' + escHtml(i.nombre) + '</span>'
+      + '<span class="item-price">' + fmt(i.precio) + '</span>'
+      + '</div>';
+  }).join('');
+  el.style.display = 'block';
+}
+
+function hideCompResults() {
+  setTimeout(function() { document.getElementById('compResults').style.display = 'none'; }, 150);
+}
+
+function selectComp(el) {
+  selectedComp = { id: el.dataset.id, nombre: el.dataset.nombre, precio: parseFloat(el.dataset.precio) };
+  document.getElementById('searchComp').value = el.dataset.nombre;
+  document.getElementById('compResults').style.display = 'none';
+}
+
+function addComp() {
+  if (!selectedComp) return alert('Seleccione un producto.');
+  var cantidad = parseFloat(document.getElementById('compCantidad').value) || 1;
+  var unidad   = document.getElementById('compUnidad').value.trim();
+  if (cantidad <= 0) return alert('La cantidad debe ser mayor a 0.');
+  var existing = componentes.find(function(c) { return c.componenteId === selectedComp.id; });
+  if (existing) {
+    existing.cantidad += cantidad;
+  } else {
+    componentes.push({ componenteId: selectedComp.id, componenteNombre: selectedComp.nombre, cantidad: cantidad, unidad: unidad });
+  }
+  document.getElementById('searchComp').value = '';
+  document.getElementById('compCantidad').value = '1';
+  document.getElementById('compUnidad').value = '';
+  selectedComp = null;
+  renderComps();
+}
+
+function removeComp(idx) { componentes.splice(idx, 1); renderComps(); }
+
+function renderComps() {
+  document.getElementById('componentesJson').value = JSON.stringify(componentes);
+  var count = document.getElementById('compCount');
+  if (count) count.textContent = componentes.length;
+
+  var tbody = document.getElementById('compBody');
+  if (componentes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">No se han agregado componentes.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = componentes.map(function(c, i) {
+    return '<tr>'
+      + '<td style="font-weight:500">' + escHtml(c.componenteNombre) + '</td>'
+      + '<td>' + c.cantidad + '</td>'
+      + '<td style="color:var(--text-muted)">' + (c.unidad || '—') + '</td>'
+      + '<td style="text-align:right"><button type="button" onclick="removeComp(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--danger);display:inline-flex;align-items:center">'
+      + '<span class="material-icons-round" style="font-size:18px">close</span></button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('tab-' + name).style.display = '';
+  btn.classList.add('active');
+}
+
+document.getElementById('kitForm').addEventListener('submit', function(e) {
+  if (componentes.length === 0) {
+    e.preventDefault();
+    switchTab('componentes', document.querySelectorAll('.tab-btn')[1]);
+    alert('El kit debe tener al menos un componente.');
+    return;
+  }
+  document.getElementById('componentesJson').value = JSON.stringify(componentes);
+});
+
+// Initialize table with existing components
+renderComps();
+</script>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px; }
+  .alert { padding:12px 16px; border-radius:var(--radius); margin-bottom:16px; }
+  .alert-error { background:#fee2e2; color:var(--danger); }
+  .tabs-nav { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:24px; }
+  .tab-btn { padding:10px 18px; border:none; background:none; cursor:pointer; font-size:0.875rem; color:var(--text-muted); border-bottom:3px solid transparent; margin-bottom:-2px; display:flex; align-items:center; gap:6px; font-weight:500; transition:color .15s; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); font-weight:600; }
+  .tab-panel { animation:fadeIn .15s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  .comp-count { display:inline-flex; align-items:center; justify-content:center; background:var(--primary); color:white; font-size:0.7rem; font-weight:700; border-radius:10px; min-width:18px; height:18px; padding:0 5px; margin-left:2px; }
+  .section-card { background:white; border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:20px; }
+  .section-title { font-size:1rem; font-weight:600; margin:0 0 16px; display:flex; align-items:center; gap:8px; }
+  .form-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .form-group { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
+  .form-group label { font-weight:500; font-size:0.875rem; }
+  .form-control { border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:0.875rem; width:100%; box-sizing:border-box; background:white; color:var(--text); }
+  .form-control:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:1px solid transparent; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-primary { background:var(--primary); color:white; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-secondary { background:white; border-color:var(--border); color:var(--text); }
+  .btn-success { background:#16a34a; color:white; }
+  .actions-bar { display:flex; gap:12px; justify-content:flex-end; padding-top:8px; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.875rem; }
+  tr:last-child td { border-bottom:none; }
+  @media (max-width:700px) { .form-grid-2 { grid-template-columns:1fr; } }
+</style>
