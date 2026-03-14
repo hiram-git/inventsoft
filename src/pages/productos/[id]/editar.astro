@@ -65,7 +65,6 @@ if (Astro.request.method === 'POST') {
     maximoInventario: parseFloat(maxStr) || 0,
     imagen,
     activo: formData.get('activo') === 'on',
-    enviarACocina: formData.get('enviarACocina') === 'on',
   };
 
   await store.updateProducto(id!, data);
@@ -283,13 +282,25 @@ const paC = producto.precioC;
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;">
         <input type="checkbox" name="activo" checked={producto.activo || undefined} /> Producto activo
       </label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;margin-top:10px">
-        <input type="checkbox" name="enviarACocina" checked={producto.enviarACocina || undefined} />
-        <span>
-          Enviar a cocina
-          <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:4px">— aparecerá en las comandas de cocina</span>
-        </span>
-      </label>
+
+      <!-- Switch live: Enviar a cocina -->
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+        <label class="sw-wrap" title="Enviar a cocina">
+          <input
+            type="checkbox"
+            id="switchCocina"
+            class="sw-input"
+            data-api={`/api/productos/${producto.id}/cocina`}
+            checked={producto.enviarACocina || undefined}
+          />
+          <span class="sw-track"><span class="sw-thumb"></span></span>
+        </label>
+        <div>
+          <span style="font-size:0.875rem;font-weight:500">Enviar a cocina</span>
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-left:6px">— aparecerá en las comandas de cocina</span>
+          <span id="cocinaStatus" style="margin-left:8px;font-size:0.75rem"></span>
+        </div>
+      </div>
     </div>
 
     <div class="actions-bar">
@@ -362,4 +373,48 @@ document.getElementById('productoForm').addEventListener('submit', function() {
   .desc-tab { padding:6px 14px; border:1px solid var(--border); border-radius:var(--radius); font-size:0.8rem; cursor:pointer; background:white; }
   .desc-tab.active { background:var(--primary); color:white; border-color:var(--primary); }
   @media (max-width:700px) { .form-grid-2,.form-grid-3 { grid-template-columns:1fr; } }
+  /* Toggle switch */
+  .sw-wrap { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex-shrink:0; }
+  .sw-input { position:absolute; opacity:0; width:0; height:0; }
+  .sw-track { display:inline-block; width:44px; height:24px; background:#cbd5e1; border-radius:24px; transition:background .2s; position:relative; }
+  .sw-thumb { position:absolute; top:3px; left:3px; width:18px; height:18px; background:white; border-radius:50%; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .sw-input:checked ~ .sw-track { background:var(--primary); }
+  .sw-input:checked ~ .sw-track .sw-thumb { transform:translateX(20px); }
+  .sw-input:focus ~ .sw-track { box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+  .sw-input:disabled ~ .sw-track { opacity:.5; cursor:not-allowed; }
 </style>
+
+<script>
+(function() {
+  var sw = document.getElementById('switchCocina');
+  if (!sw) return;
+  var api = sw.dataset.api;
+  var status = document.getElementById('cocinaStatus');
+
+  sw.addEventListener('change', async function() {
+    sw.disabled = true;
+    status.textContent = '';
+    status.style.color = '';
+    try {
+      var res = await fetch(api, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: sw.checked }),
+      });
+      if (res.ok) {
+        status.textContent = '✓ Guardado';
+        status.style.color = '#16a34a';
+      } else {
+        throw new Error('Error ' + res.status);
+      }
+    } catch (e) {
+      sw.checked = !sw.checked; // revertir
+      status.textContent = '✗ Error al guardar';
+      status.style.color = 'var(--danger)';
+    } finally {
+      sw.disabled = false;
+      setTimeout(function() { status.textContent = ''; }, 2500);
+    }
+  });
+})();
+</script>
