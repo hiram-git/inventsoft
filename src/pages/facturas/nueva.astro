@@ -66,11 +66,12 @@ const allItems = [
     id: String(p.id),
     nombre: p.nombre,
     precio: p.precio,
-    // Kits have no stock themselves — inventory is checked at component level when billing
-    stock: p.tipoProducto === 'kit' ? 999999 : (p.stock ?? 0),
+    // Kits & compuestos: inventory deducted from components, not from product stock
+    stock: (p.tipoProducto === 'kit' || p.tipoProducto === 'compuesto') ? 999999 : (p.stock ?? 0),
     esKit: p.tipoProducto === 'kit',
+    esReceta: p.tipoProducto === 'compuesto',
   })),
-  ...servicios.map(s => ({ tipo: 'servicio', id: String(s.id), nombre: s.nombre, precio: s.precio, stock: 999999, esKit: false })),
+  ...servicios.map(s => ({ tipo: 'servicio', id: String(s.id), nombre: s.nombre, precio: s.precio, stock: 999999, esKit: false, esReceta: false })),
 ];
 ---
 
@@ -240,10 +241,12 @@ const allItems = [
     var el = document.getElementById('searchResults');
     if (!results.length) { el.style.display = 'none'; return; }
     el.innerHTML = results.slice(0, 25).map(function(i) {
-      var kitBadge = i.esKit
+      var badge = i.esKit
         ? '<span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:10px;background:#fef9c3;color:#854d0e;white-space:nowrap">Kit</span>'
-        : '';
-      var stockInfo = (i.tipo === 'producto' && !i.esKit)
+        : i.esReceta
+          ? '<span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:10px;background:#ffedd5;color:#9a3412;white-space:nowrap">Receta</span>'
+          : '';
+      var stockInfo = (i.tipo === 'producto' && !i.esKit && !i.esReceta)
         ? '<span class="item-stock">Stock: ' + i.stock + '</span>'
         : '';
       return '<div class="search-result-item"'
@@ -253,7 +256,7 @@ const allItems = [
         + ' data-precio="' + i.precio + '"'
         + ' data-stock="' + i.stock + '"'
         + ' onmousedown="selectItem(this)">'
-        + kitBadge
+        + badge
         + '<span class="item-name">' + escHtml(i.nombre) + '</span>'
         + '<span class="item-price">' + fmt(i.precio) + '</span>'
         + stockInfo

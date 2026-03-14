@@ -55,6 +55,7 @@ if (Astro.request.method === 'POST') {
     precioC,
     imagen: formData.get('imagen')?.toString() ?? '',
     activo: formData.get('activo') === 'on',
+    enviarACocina: formData.get('enviarACocina') === 'on',
   };
 
   await store.createServicio(data);
@@ -128,6 +129,13 @@ const [departamentos, grupos, marcas, lineas] = await Promise.all([
         </h2>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;">
           <input type="checkbox" name="activo" checked /> Servicio activo
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;margin-top:10px">
+          <input type="checkbox" name="enviarACocina" />
+          <span>
+            Enviar a cocina
+            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:4px">— aparecerá en las comandas de cocina</span>
+          </span>
         </label>
       </div>
     </div>

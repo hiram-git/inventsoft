@@ -1,0 +1,376 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+const { id } = Astro.params;
+const receta = await store.getProducto(id!);
+
+if (!receta || receta.tipoProducto !== 'compuesto') {
+  return Astro.redirect('/recetas');
+}
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+
+  const nombre      = formData.get('nombre')?.toString() ?? '';
+  const codigo      = formData.get('codigo')?.toString() ?? '';
+  const imagen      = formData.get('imagen')?.toString() ?? '';
+  const descripcion = formData.get('descripcion')?.toString() ?? '';
+  const precio      = parseFloat(formData.get('precio')?.toString() ?? '0') || 0;
+  const costo       = parseFloat(formData.get('costo')?.toString() ?? '0') || 0;
+  const stock       = parseInt(formData.get('stock')?.toString() ?? '0') || 0;
+  const activo         = formData.get('activo') === 'on';
+  const enviarACocina  = formData.get('enviarACocina') === 'on';
+
+  if (!nombre) {
+    error = 'El nombre de la receta es obligatorio.';
+  } else {
+    const ingredientesJson = formData.get('ingredientes_json')?.toString() ?? '[]';
+    let ingredientes: { componenteId: string; componenteNombre: string; cantidad: number; unidad: string }[] = [];
+    try { ingredientes = JSON.parse(ingredientesJson); } catch { ingredientes = []; }
+
+    if (ingredientes.length === 0) {
+      error = 'La receta debe tener al menos un ingrediente.';
+    } else {
+      await store.updateProducto(id!, { nombre, codigo, imagen, descripcion, precio, costo, stock, activo, enviarACocina, tipoProducto: 'compuesto' });
+      await store.setComponentesProducto(id!, ingredientes);
+      return Astro.redirect('/recetas');
+    }
+  }
+}
+
+const [allProductos, ingredientesActuales] = await Promise.all([
+  store.getProductos(),
+  store.getComponentesProducto(id!),
+]);
+
+const productosDisponibles = allProductos.filter(p => p.activo && p.tipoProducto === 'simple');
+
+const ingItems = productosDisponibles.map(p => ({
+  id: String(p.id),
+  nombre: p.nombre,
+  precio: p.precio,
+  stock: p.stock ?? 0,
+}));
+
+// Enrich current ingredients with stock from productos list for display
+const allMap = Object.fromEntries(allProductos.map(p => [String(p.id), p]));
+const ingredientesInit = ingredientesActuales.map(c => ({
+  componenteId: String(c.componenteId),
+  componenteNombre: c.componenteNombre,
+  cantidad: Number(c.cantidad),
+  unidad: c.unidad ?? '',
+  _stock: allMap[String(c.componenteId)]?.stock ?? 0,
+}));
+---
+
+<AdminLayout title={`Editar Receta — ${receta.nombre}`}>
+  <div class="page-header">
+    <h1><span class="material-icons-round">receipt_long</span> Editar Receta</h1>
+    <a href="/recetas" class="btn btn-secondary">
+      <span class="material-icons-round">arrow_back</span> Volver
+    </a>
+  </div>
+
+  {error && <div class="alert alert-error">{error}</div>}
+
+  <script is:inline set:html={`window.__recetaIngItems = ${JSON.stringify(ingItems)};`}></script>
+  <script is:inline set:html={`window.__recetaIngInit  = ${JSON.stringify(ingredientesInit)};`}></script>
+
+  <form method="POST" id="recetaForm">
+    <input type="hidden" name="ingredientes_json" id="ingredientesJson" value="[]" />
+
+    <div class="tabs-nav">
+      <button type="button" class="tab-btn active" onclick="switchTab('general', this)">
+        <span class="material-icons-round" style="font-size:16px">badge</span> General
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('ingredientes', this)">
+        <span class="material-icons-round" style="font-size:16px">format_list_bulleted</span>
+        Ingredientes <span id="ingCount" class="ing-count">{ingredientesActuales.length}</span>
+      </button>
+    </div>
+
+    <!-- TAB: General -->
+    <div id="tab-general" class="tab-panel">
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">badge</span> Identificación</h2>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>Nombre <span class="req">*</span></label>
+            <input type="text" name="nombre" class="form-control" required value={receta.nombre} />
+          </div>
+          <div class="form-group">
+            <label>Código</label>
+            <input type="text" name="codigo" class="form-control" value={receta.codigo ?? ''} />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descripción</label>
+          <textarea name="descripcion" class="form-control" rows="3">{receta.descripcion ?? ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label>URL de Imagen</label>
+          <input type="url" name="imagen" class="form-control" value={receta.imagen ?? ''} />
+          <span class="hint">Se mostrará en el buscador y en comandas</span>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">payments</span> Costos y Precio</h2>
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>Costo de producción</label>
+            <input type="number" name="costo" class="form-control" step="0.01" min="0" value={receta.costo} />
+            <span class="hint">Referencia interna</span>
+          </div>
+          <div class="form-group">
+            <label>Precio de venta <span class="req">*</span></label>
+            <input type="number" name="precio" class="form-control" step="0.01" min="0" value={receta.precio} required />
+          </div>
+          <div class="form-group">
+            <label>Stock actual</label>
+            <input type="number" name="stock" class="form-control" min="0" value={receta.stock} />
+            <span class="hint">Unidades ya elaboradas disponibles</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">toggle_on</span> Estado</h2>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500">
+          <input type="checkbox" name="activo" checked={receta.activo} /> Receta activa (se mostrará en búsquedas)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;font-weight:500;margin-top:10px">
+          <input type="checkbox" name="enviarACocina" checked={receta.enviarACocina || undefined} />
+          <span>
+            Enviar a cocina
+            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:4px">— aparecerá en las comandas de cocina al seleccionar esta receta</span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <!-- TAB: Ingredientes -->
+    <div id="tab-ingredientes" class="tab-panel" style="display:none">
+      <div class="section-card">
+        <h2 class="section-title"><span class="material-icons-round">format_list_bulleted</span> Ingredientes de la Receta</h2>
+        <div class="info-box">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">info</span>
+          Al facturar esta receta, el stock se descuenta <strong>automáticamente</strong> de cada ingrediente en las cantidades indicadas.
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:16px;align-items:end">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Ingrediente (producto simple)</label>
+            <div style="position:relative">
+              <input
+                type="text"
+                id="searchIng"
+                class="form-control"
+                placeholder="Buscar producto..."
+                autocomplete="off"
+                oninput="filterIngs(this.value)"
+                onfocus="filterIngs(this.value)"
+                onblur="hideIngResults()"
+              />
+              <div id="ingResults" class="search-dropdown" style="display:none"></div>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Cantidad</label>
+            <input type="number" id="ingCantidad" class="form-control" min="0.001" step="0.001" value="1" />
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Unidad</label>
+            <input type="text" id="ingUnidad" class="form-control" placeholder="pza, kg, lt, gr…" />
+          </div>
+          <button type="button" class="btn btn-success" onclick="addIng()" style="height:38px">
+            <span class="material-icons-round" style="font-size:18px">add</span> Agregar
+          </button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Ingrediente</th>
+              <th>Cantidad</th>
+              <th>Unidad</th>
+              <th>Stock actual</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ingBody">
+            <tr>
+              <td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Cargando ingredientes…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="actions-bar">
+      <a href="/recetas" class="btn btn-secondary">Cancelar</a>
+      <button type="submit" class="btn btn-primary">
+        <span class="material-icons-round">save</span> Guardar Cambios
+      </button>
+    </div>
+  </form>
+</AdminLayout>
+
+<script is:inline>
+var __ingItems = window.__recetaIngItems || [];
+var selectedIng = null;
+var ingredientes = (window.__recetaIngInit || []).map(function(c) {
+  return {
+    componenteId:     String(c.componenteId),
+    componenteNombre: c.componenteNombre,
+    cantidad:         Number(c.cantidad),
+    unidad:           c.unidad || '',
+    _stock:           c._stock || 0,
+  };
+});
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmt(n) { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
+
+function filterIngs(q) {
+  q = (q || '').toLowerCase().trim();
+  var results = q.length > 0
+    ? __ingItems.filter(function(i) { return i.nombre.toLowerCase().includes(q); })
+    : __ingItems.slice(0, 30);
+  var el = document.getElementById('ingResults');
+  if (!results.length) { el.style.display = 'none'; return; }
+  el.innerHTML = results.slice(0, 25).map(function(i) {
+    return '<div class="search-result-item"'
+      + ' data-id="' + escHtml(i.id) + '"'
+      + ' data-nombre="' + escHtml(i.nombre) + '"'
+      + ' data-precio="' + i.precio + '"'
+      + ' data-stock="' + i.stock + '"'
+      + ' onmousedown="selectIng(this)">'
+      + '<span class="item-name">' + escHtml(i.nombre) + '</span>'
+      + '<span class="item-price">' + fmt(i.precio) + '</span>'
+      + '<span class="item-stock">Stock: ' + i.stock + '</span>'
+      + '</div>';
+  }).join('');
+  el.style.display = 'block';
+}
+
+function hideIngResults() {
+  setTimeout(function() { document.getElementById('ingResults').style.display = 'none'; }, 150);
+}
+
+function selectIng(el) {
+  selectedIng = { id: el.dataset.id, nombre: el.dataset.nombre, stock: parseInt(el.dataset.stock) };
+  document.getElementById('searchIng').value = el.dataset.nombre;
+  document.getElementById('ingResults').style.display = 'none';
+}
+
+function addIng() {
+  if (!selectedIng) return alert('Seleccione un ingrediente.');
+  var cantidad = parseFloat(document.getElementById('ingCantidad').value) || 1;
+  var unidad   = document.getElementById('ingUnidad').value.trim();
+  if (cantidad <= 0) return alert('La cantidad debe ser mayor a 0.');
+  var existing = ingredientes.find(function(c) { return c.componenteId === selectedIng.id; });
+  if (existing) {
+    existing.cantidad += cantidad;
+  } else {
+    ingredientes.push({ componenteId: selectedIng.id, componenteNombre: selectedIng.nombre, cantidad: cantidad, unidad: unidad, _stock: selectedIng.stock });
+  }
+  document.getElementById('searchIng').value = '';
+  document.getElementById('ingCantidad').value = '1';
+  document.getElementById('ingUnidad').value = '';
+  selectedIng = null;
+  renderIngs();
+}
+
+function removeIng(idx) { ingredientes.splice(idx, 1); renderIngs(); }
+
+function renderIngs() {
+  document.getElementById('ingredientesJson').value = JSON.stringify(
+    ingredientes.map(function(c) {
+      return { componenteId: c.componenteId, componenteNombre: c.componenteNombre, cantidad: c.cantidad, unidad: c.unidad };
+    })
+  );
+  var count = document.getElementById('ingCount');
+  if (count) count.textContent = ingredientes.length;
+
+  var tbody = document.getElementById('ingBody');
+  if (ingredientes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">No se han agregado ingredientes.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = ingredientes.map(function(c, i) {
+    var stockBadge = c._stock > 0
+      ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600">' + c._stock + '</span>'
+      : '<span style="background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600">0</span>';
+    return '<tr>'
+      + '<td style="font-weight:500">' + escHtml(c.componenteNombre) + '</td>'
+      + '<td>' + c.cantidad + '</td>'
+      + '<td style="color:var(--text-muted)">' + (c.unidad || '—') + '</td>'
+      + '<td>' + stockBadge + '</td>'
+      + '<td style="text-align:right"><button type="button" onclick="removeIng(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--danger);display:inline-flex;align-items:center">'
+      + '<span class="material-icons-round" style="font-size:18px">close</span></button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('tab-' + name).style.display = '';
+  btn.classList.add('active');
+}
+
+document.getElementById('recetaForm').addEventListener('submit', function(e) {
+  if (ingredientes.length === 0) {
+    e.preventDefault();
+    switchTab('ingredientes', document.querySelectorAll('.tab-btn')[1]);
+    alert('La receta debe tener al menos un ingrediente.');
+    return;
+  }
+  renderIngs();
+});
+
+// Initialize with existing ingredients
+renderIngs();
+</script>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px; }
+  .alert { padding:12px 16px; border-radius:var(--radius); margin-bottom:16px; }
+  .alert-error { background:#fee2e2; color:var(--danger); }
+  .tabs-nav { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:24px; }
+  .tab-btn { padding:10px 18px; border:none; background:none; cursor:pointer; font-size:0.875rem; color:var(--text-muted); border-bottom:3px solid transparent; margin-bottom:-2px; display:flex; align-items:center; gap:6px; font-weight:500; transition:color .15s; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); font-weight:600; }
+  .tab-panel { animation:fadeIn .15s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  .ing-count { display:inline-flex; align-items:center; justify-content:center; background:var(--primary); color:white; font-size:0.7rem; font-weight:700; border-radius:10px; min-width:18px; height:18px; padding:0 5px; margin-left:2px; }
+  .section-card { background:white; border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:20px; }
+  .section-title { font-size:1rem; font-weight:600; margin:0 0 16px; display:flex; align-items:center; gap:8px; }
+  .info-box { background:#eff6ff; border:1px solid #bfdbfe; border-radius:var(--radius); padding:10px 14px; margin-bottom:16px; font-size:0.875rem; color:#1d4ed8; line-height:1.5; }
+  .form-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .form-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  .form-group { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
+  .form-group label { font-weight:500; font-size:0.875rem; }
+  .req { color:var(--danger); }
+  .hint { font-size:0.75rem; color:var(--text-muted); }
+  .form-control { border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:0.875rem; width:100%; box-sizing:border-box; background:white; color:var(--text); }
+  .form-control:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:1px solid transparent; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-primary { background:var(--primary); color:white; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-secondary { background:white; border-color:var(--border); color:var(--text); }
+  .btn-success { background:#16a34a; color:white; }
+  .actions-bar { display:flex; gap:12px; justify-content:flex-end; padding-top:8px; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.875rem; }
+  tr:last-child td { border-bottom:none; }
+  @media (max-width:700px) { .form-grid-2, .form-grid-3 { grid-template-columns:1fr; } }
+</style>

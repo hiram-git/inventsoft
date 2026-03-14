@@ -49,17 +49,38 @@ if (Astro.request.method === 'POST') {
 const pedidos    = await store.getPedidos();
 const pendientes = pedidos.filter(p => p.estado === 'confirmado');
 
-// Pasar solo los campos necesarios al cliente para aligerar el JSON
-const productos = (await store.getProductos())
-  .filter(p => p.activo)
-  .map(p => ({
-    id:     String(p.id),
-    nombre: p.nombre,
-    precio: p.precioA?.precio ?? p.precio ?? 0,
-    codigo: p.codigo ?? '',
-    departamento: p.departamento ?? '',
-    imagen: p.imagen ?? '',
-  }));
+// Solo productos/servicios activos con enviarACocina=true aparecen en el selector de comandas
+const [allProductos, allServicios] = await Promise.all([
+  store.getProductos(),
+  store.getServicios(),
+]);
+
+type ItemComanda = { id: string; nombre: string; precio: number; codigo: string; departamento: string; imagen: string; tipo: 'producto' | 'servicio' };
+
+const productos: ItemComanda[] = [
+  ...allProductos
+    .filter(p => p.activo && p.enviarACocina)
+    .map(p => ({
+      id:          String(p.id),
+      nombre:      p.nombre,
+      precio:      p.precioA?.precio ?? p.precio ?? 0,
+      codigo:      p.codigo ?? '',
+      departamento: p.departamento ?? '',
+      imagen:      p.imagen ?? '',
+      tipo:        'producto' as const,
+    })),
+  ...allServicios
+    .filter(s => s.activo && s.enviarACocina)
+    .map(s => ({
+      id:          `srv-${s.id}`,
+      nombre:      s.nombre,
+      precio:      s.precioA?.precio ?? s.precio ?? 0,
+      codigo:      s.codigo ?? '',
+      departamento: s.departamento ?? '',
+      imagen:      s.imagen ?? '',
+      tipo:        'servicio' as const,
+    })),
+];
 ---
 
 <AdminLayout title="Nueva Comanda">
@@ -829,6 +850,9 @@ const productos = (await store.getProductos())
         ? `<img src="${p.imagen}" alt="${p.nombre.replace(/"/g,'&quot;')}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
            <div class="prod-avatar" style="display:none">${initial}</div>`
         : `<div class="prod-avatar">${initial}</div>`;
+      const tipoBadge = p.tipo === 'servicio'
+        ? `<span style="position:absolute;bottom:5px;left:5px;background:rgba(139,92,246,0.85);color:white;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.04em;backdrop-filter:blur(2px)">SRV</span>`
+        : '';
       return `
         <div
           class="prod-card${inOrder ? ' selected' : ''}"
@@ -839,6 +863,7 @@ const productos = (await store.getProductos())
         >
           <div class="prod-img-wrap" style="background:${color}">
             ${imgContent}
+            ${tipoBadge}
             ${inOrder ? `<div class="qty-badge">${qty}</div>` : ''}
           </div>
           <div class="prod-info">
