@@ -2,13 +2,15 @@
 import AdminLayout from '../layouts/AdminLayout.astro';
 import { store } from '../lib/store';
 
-const [clientes, productos, facturas, cxc] = await Promise.all([
+const [clientes, productos, facturas, cxc, allServicios] = await Promise.all([
   store.getClientes(),
   store.getProductos(),
   store.getFacturas(),
   store.getCuentasPorCobrar(),
+  store.getServicios(),
 ]);
 
+// ─── KPIs generales ───────────────────────────────────────────────────────────
 const totalVentas = facturas
   .filter(f => f.estado === 'pagada')
   .reduce((sum, f) => sum + f.total, 0);
@@ -18,17 +20,101 @@ const facturasVencidas = facturas.filter(f => f.estado === 'vencida').length;
 const productosLowStock = productos.filter(p => p.stock < 15).length;
 const totalCxC = cxc.reduce((s, f) => s + f.saldo, 0);
 
+// ─── Mes actual ───────────────────────────────────────────────────────────────
+const now = new Date();
+const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+const facturasMes = facturas.filter(f =>
+  f.fecha.startsWith(monthStr) && f.estado !== 'cancelada'
+);
+
+// 1. Contado vs Crédito
+const ventasContado  = facturasMes.filter(f => !f.fechaVencimiento).reduce((s, f) => s + f.total, 0);
+const ventasCredito  = facturasMes.filter(f =>  f.fechaVencimiento).reduce((s, f) => s + f.total, 0);
+
+// 2. Productos vs Servicios
+let totalProductosMes = 0;
+let totalServiciosMes = 0;
+for (const f of facturasMes) {
+  for (const item of f.items ?? []) {
+    if (item.tipo === 'servicio') totalServiciosMes += item.subtotal;
+    else                          totalProductosMes  += item.subtotal;
+  }
+}
+
+// 3. Top 10 clientes
+const clienteMap = new Map<string, number>();
+for (const f of facturasMes) {
+  clienteMap.set(f.clienteNombre, (clienteMap.get(f.clienteNombre) ?? 0) + f.total);
+}
+const top10Clientes = [...clienteMap.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+// 4. Top 10 departamentos
+const productoDeptoMap = new Map<number, string>();
+for (const p of productos)    productoDeptoMap.set(Number(p.id), p.departamento ?? '');
+for (const s of allServicios) productoDeptoMap.set(Number(s.id), s.departamento ?? '');
+
+const deptoMap = new Map<string, number>();
+for (const f of facturasMes) {
+  for (const item of f.items ?? []) {
+    const depto = productoDeptoMap.get(Number(item.productoId)) || 'Sin departamento';
+    deptoMap.set(depto, (deptoMap.get(depto) ?? 0) + item.subtotal);
+  }
+}
+const top10Deptos = [...deptoMap.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+// 5. Top 10 productos
+const prodMap = new Map<string, number>();
+for (const f of facturasMes) {
+  for (const item of f.items ?? []) {
+    if (item.tipo !== 'servicio') {
+      prodMap.set(item.productoNombre, (prodMap.get(item.productoNombre) ?? 0) + item.subtotal);
+    }
+  }
+}
+const top10Productos = [...prodMap.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+// 6. Top 10 servicios
+const servMap = new Map<string, number>();
+for (const f of facturasMes) {
+  for (const item of f.items ?? []) {
+    if (item.tipo === 'servicio') {
+      servMap.set(item.productoNombre, (servMap.get(item.productoNombre) ?? 0) + item.subtotal);
+    }
+  }
+}
+const top10Servicios = [...servMap.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+// 7. Top 10 CxC por cliente
+const cxcMap = new Map<string, number>();
+for (const f of cxc) {
+  cxcMap.set(f.clienteNombre, (cxcMap.get(f.clienteNombre) ?? 0) + f.saldo);
+}
+const top10CxC = [...cxcMap.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+const mesLabel = now.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+
 const quickActions = [
-  { href: '/facturas/nueva', icon: 'add_circle', label: 'Nueva Factura', color: '#2563eb', bg: '#dbeafe' },
-  { href: '/pedidos/nuevo', icon: 'shopping_cart', label: 'Nuevo Pedido', color: '#16a34a', bg: '#dcfce7' },
-  { href: '/clientes', icon: 'person_add', label: 'Nuevo Cliente', color: '#7c3aed', bg: '#ede9fe' },
-  { href: '/cobros/nuevo', icon: 'payments', label: 'Registrar Cobro', color: '#0891b2', bg: '#cffafe' },
-  { href: '/compras/nueva', icon: 'local_shipping', label: 'Nueva Compra', color: '#d97706', bg: '#fef3c7' },
-  { href: '/cuentas-por-cobrar', icon: 'account_balance_wallet', label: 'Cuentas por Cobrar', color: '#dc2626', bg: '#fee2e2' },
-  { href: '/inventario', icon: 'view_list', label: 'Ver Inventario', color: '#059669', bg: '#d1fae5' },
-  { href: '/kardex', icon: 'swap_vert', label: 'Kardex', color: '#6366f1', bg: '#e0e7ff' },
-  { href: '/reportes/ventas', icon: 'bar_chart', label: 'Reporte Ventas', color: '#0f766e', bg: '#ccfbf1' },
-  { href: '/cotizaciones/nueva', icon: 'request_quote', label: 'Nueva Cotización', color: '#be185d', bg: '#fce7f3' },
+  { href: '/facturas/nueva',       icon: 'add_circle',           label: 'Nueva Factura',        color: '#2563eb', bg: '#dbeafe' },
+  { href: '/pedidos/nuevo',        icon: 'shopping_cart',        label: 'Nuevo Pedido',         color: '#16a34a', bg: '#dcfce7' },
+  { href: '/clientes',             icon: 'person_add',           label: 'Nuevo Cliente',        color: '#7c3aed', bg: '#ede9fe' },
+  { href: '/cobros/nuevo',         icon: 'payments',             label: 'Registrar Cobro',      color: '#0891b2', bg: '#cffafe' },
+  { href: '/compras/nueva',        icon: 'local_shipping',       label: 'Nueva Compra',         color: '#d97706', bg: '#fef3c7' },
+  { href: '/cuentas-por-cobrar',   icon: 'account_balance_wallet', label: 'Cuentas por Cobrar', color: '#dc2626', bg: '#fee2e2' },
+  { href: '/inventario',           icon: 'view_list',            label: 'Ver Inventario',       color: '#059669', bg: '#d1fae5' },
+  { href: '/kardex',               icon: 'swap_vert',            label: 'Kardex',               color: '#6366f1', bg: '#e0e7ff' },
+  { href: '/reportes/ventas',      icon: 'bar_chart',            label: 'Reporte Ventas',       color: '#0f766e', bg: '#ccfbf1' },
+  { href: '/cotizaciones/nueva',   icon: 'request_quote',        label: 'Nueva Cotización',     color: '#be185d', bg: '#fce7f3' },
 ];
 ---
 
@@ -61,7 +147,6 @@ const quickActions = [
         <p>Clientes</p>
       </div>
     </div>
-
     <div class="stat-card">
       <div class="stat-icon" style="background: #dcfce7; color: #16a34a;">
         <span class="material-icons-round">inventory</span>
@@ -71,7 +156,6 @@ const quickActions = [
         <p>Productos</p>
       </div>
     </div>
-
     <div class="stat-card">
       <div class="stat-icon" style="background: #fef3c7; color: #f59e0b;">
         <span class="material-icons-round">receipt</span>
@@ -81,7 +165,6 @@ const quickActions = [
         <p>Facturas</p>
       </div>
     </div>
-
     <div class="stat-card">
       <div class="stat-icon" style="background: #f3e8ff; color: #9333ea;">
         <span class="material-icons-round">payments</span>
@@ -91,7 +174,6 @@ const quickActions = [
         <p>Ventas cobradas</p>
       </div>
     </div>
-
     <div class="stat-card">
       <div class="stat-icon" style="background: #fee2e2; color: #dc2626;">
         <span class="material-icons-round">account_balance_wallet</span>
@@ -103,6 +185,106 @@ const quickActions = [
     </div>
   </div>
 
+  <!-- KPIs del mes -->
+  <div class="section-header">
+    <span class="material-icons-round">insights</span>
+    <h2>KPIs — <span class="month-label">{mesLabel}</span></h2>
+  </div>
+
+  <!-- Fila 1: Donuts -->
+  <div class="kpi-row-2">
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">pie_chart</span>
+        Ventas: Contado vs Crédito
+      </h3>
+      <div class="donut-wrap">
+        <canvas id="chartContadoCredito"></canvas>
+        <div class="donut-legend">
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#3b82f6"></span>
+            <span>Contado</span>
+            <strong>${ventasContado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#f59e0b"></span>
+            <span>Crédito</span>
+            <strong>${ventasCredito.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">donut_large</span>
+        Ventas: Productos vs Servicios
+      </h3>
+      <div class="donut-wrap">
+        <canvas id="chartProdServ"></canvas>
+        <div class="donut-legend">
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#10b981"></span>
+            <span>Productos</span>
+            <strong>${totalProductosMes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#8b5cf6"></span>
+            <span>Servicios</span>
+            <strong>${totalServiciosMes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fila 2: Top 10 -->
+  <div class="kpi-row-2">
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">people</span>
+        Top 10 Ventas por Cliente
+      </h3>
+      <canvas id="chartClientes"></canvas>
+    </div>
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">category</span>
+        Top 10 Ventas por Departamento
+      </h3>
+      <canvas id="chartDeptos"></canvas>
+    </div>
+  </div>
+
+  <div class="kpi-row-2">
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">inventory_2</span>
+        Top 10 Ventas por Producto
+      </h3>
+      <canvas id="chartProductos"></canvas>
+    </div>
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">build</span>
+        Top 10 Ventas por Servicio
+      </h3>
+      <canvas id="chartServicios"></canvas>
+    </div>
+  </div>
+
+  <!-- Fila 3: CxC -->
+  <div class="kpi-row-1">
+    <div class="card chart-card">
+      <h3 class="chart-title">
+        <span class="material-icons-round">account_balance_wallet</span>
+        Top 10 Cuentas por Cobrar por Cliente
+      </h3>
+      <canvas id="chartCxC"></canvas>
+    </div>
+  </div>
+
+  <!-- Alertas + Últimas Facturas -->
   <div class="dashboard-grid">
     <div class="card">
       <h2 class="card-title">
@@ -175,6 +357,143 @@ const quickActions = [
   </div>
 </AdminLayout>
 
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<script define:vars={{
+  ventasContado,
+  ventasCredito,
+  totalProductosMes,
+  totalServiciosMes,
+  top10Clientes,
+  top10Deptos,
+  top10Productos,
+  top10Servicios,
+  top10CxC,
+}}>
+  Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
+  Chart.defaults.font.size = 12;
+
+  const fmt = (v) => '$' + Number(v).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // ── Tooltip común ─────────────────────────────────────────────────────────
+  const tooltipCallbacks = {
+    label: (ctx) => ' ' + fmt(ctx.parsed.x ?? ctx.parsed.y ?? ctx.raw),
+  };
+
+  // ── 1. Contado vs Crédito ─────────────────────────────────────────────────
+  new Chart(document.getElementById('chartContadoCredito'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Contado', 'Crédito'],
+      datasets: [{
+        data: [ventasContado, ventasCredito],
+        backgroundColor: ['#3b82f6', '#f59e0b'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ' ' + fmt(ctx.raw) } },
+      },
+    },
+  });
+
+  // ── 2. Productos vs Servicios ─────────────────────────────────────────────
+  new Chart(document.getElementById('chartProdServ'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Productos', 'Servicios'],
+      datasets: [{
+        data: [totalProductosMes, totalServiciosMes],
+        backgroundColor: ['#10b981', '#8b5cf6'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ' ' + fmt(ctx.raw) } },
+      },
+    },
+  });
+
+  // ── Helper: horizontal bar ────────────────────────────────────────────────
+  function hbar(id, labels, data, color) {
+    new Chart(document.getElementById(id), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: color + 'cc',
+          borderColor: color,
+          borderWidth: 1,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: tooltipCallbacks },
+        },
+        scales: {
+          x: {
+            ticks: { callback: (v) => fmt(v) },
+            grid: { color: '#f1f5f9' },
+          },
+          y: {
+            ticks: { font: { size: 11 } },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  // ── 3. Top 10 clientes ────────────────────────────────────────────────────
+  hbar('chartClientes',
+    top10Clientes.map(([k]) => k),
+    top10Clientes.map(([, v]) => v),
+    '#3b82f6'
+  );
+
+  // ── 4. Top 10 departamentos ───────────────────────────────────────────────
+  hbar('chartDeptos',
+    top10Deptos.map(([k]) => k),
+    top10Deptos.map(([, v]) => v),
+    '#f59e0b'
+  );
+
+  // ── 5. Top 10 productos ───────────────────────────────────────────────────
+  hbar('chartProductos',
+    top10Productos.map(([k]) => k),
+    top10Productos.map(([, v]) => v),
+    '#10b981'
+  );
+
+  // ── 6. Top 10 servicios ───────────────────────────────────────────────────
+  hbar('chartServicios',
+    top10Servicios.map(([k]) => k),
+    top10Servicios.map(([, v]) => v),
+    '#8b5cf6'
+  );
+
+  // ── 7. Top 10 CxC ─────────────────────────────────────────────────────────
+  hbar('chartCxC',
+    top10CxC.map(([k]) => k),
+    top10CxC.map(([, v]) => v),
+    '#ef4444'
+  );
+</script>
+
 <style>
   .page-header {
     display: flex;
@@ -238,9 +557,7 @@ const quickActions = [
     transition: all 0.2s;
   }
 
-  .qa-icon .material-icons-round {
-    font-size: 22px;
-  }
+  .qa-icon .material-icons-round { font-size: 22px; }
 
   .qa-label {
     font-size: 0.72rem;
@@ -250,9 +567,7 @@ const quickActions = [
     color: var(--text-muted);
   }
 
-  .quick-action:hover .qa-label {
-    color: var(--qa-color);
-  }
+  .quick-action:hover .qa-label { color: var(--qa-color); }
 
   /* Stats */
   .stats-grid {
@@ -297,18 +612,112 @@ const quickActions = [
     margin: 0;
   }
 
-  /* Dashboard grid */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 16px;
+  /* Section header */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 24px 0 14px;
   }
 
+  .section-header .material-icons-round {
+    font-size: 22px;
+    color: var(--primary);
+  }
+
+  .section-header h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .month-label {
+    text-transform: capitalize;
+    color: var(--primary);
+  }
+
+  /* KPI rows */
+  .kpi-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .kpi-row-1 {
+    margin-bottom: 16px;
+  }
+
+  /* Cards */
   .card {
     background: white;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 20px;
+  }
+
+  .chart-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+
+  .chart-title .material-icons-round {
+    font-size: 18px;
+    color: var(--primary);
+  }
+
+  /* Donut layout */
+  .donut-wrap {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex: 1;
+  }
+
+  .donut-wrap canvas {
+    max-width: 160px !important;
+    max-height: 160px !important;
+  }
+
+  .donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+
+  .legend-item span:not(.legend-dot) { flex: 1; color: var(--text-muted); }
+  .legend-item strong { font-size: 0.9rem; }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Dashboard grid (alertas + facturas) */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 16px;
   }
 
   .card-title {
@@ -347,7 +756,7 @@ const quickActions = [
   a.alert-item:hover { opacity: 0.85; }
 
   .alert-item.warning { background: #fef3c7; color: #b45309; }
-  .alert-item.danger { background: #fee2e2; color: #dc2626; }
+  .alert-item.danger  { background: #fee2e2; color: #dc2626; }
   .alert-item.success { background: #dcfce7; color: #16a34a; }
   .alert-item .material-icons-round { font-size: 18px; }
 
@@ -360,15 +769,16 @@ const quickActions = [
   .link:hover { text-decoration: underline; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
   .badge-success { background: #dcfce7; color: #16a34a; }
-  .badge-warning { background: #fef9c3; color: #ca8a04; }
-  .badge-danger { background: #fee2e2; color: #dc2626; }
+  .badge-warning  { background: #fef9c3; color: #ca8a04; }
+  .badge-danger   { background: #fee2e2; color: #dc2626; }
 
   @media (max-width: 1300px) {
     .quick-actions { grid-template-columns: repeat(5, 1fr); }
   }
   @media (max-width: 900px) {
-    .quick-actions { grid-template-columns: repeat(4, 1fr); }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .quick-actions  { grid-template-columns: repeat(4, 1fr); }
+    .stats-grid     { grid-template-columns: repeat(2, 1fr); }
+    .kpi-row-2      { grid-template-columns: 1fr; }
     .dashboard-grid { grid-template-columns: 1fr; }
   }
 </style>
