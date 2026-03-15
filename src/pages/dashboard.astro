@@ -357,9 +357,6 @@ const quickActions = [
   </div>
 </AdminLayout>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-
 <script define:vars={{
   ventasContado,
   ventasCredito,
@@ -371,6 +368,7 @@ const quickActions = [
   top10Servicios,
   top10CxC,
 }}>
+  function initCharts(Chart) {
   Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
   Chart.defaults.font.size = 12;
 
@@ -492,6 +490,12 @@ const quickActions = [
     top10CxC.map(([, v]) => v),
     '#ef4444'
   );
+  } // end initCharts
+
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+  s.onload = () => initCharts(window.Chart);
+  document.head.appendChild(s);
 </script>
 
 <style>
