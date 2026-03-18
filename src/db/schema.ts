@@ -293,8 +293,8 @@ export const inventario = pgTable('inventario', {
   almacenNombre: varchar('almacen_nombre', { length: 200 }).notNull(),
   productoId: integer('producto_id').notNull(),
   productoNombre: varchar('producto_nombre', { length: 300 }).notNull(),
-  stock: integer('stock').default(0).notNull(),
-  stockReservado: integer('stock_reservado').default(0).notNull(),
+  stock: numeric('stock', { precision: 14, scale: 4 }).default('0').notNull(),
+  stockReservado: numeric('stock_reservado', { precision: 14, scale: 4 }).default('0').notNull(),
 });
 
 // --- Kardex (movimientos de inventario) ---
@@ -305,9 +305,9 @@ export const kardex = pgTable('kardex', {
   productoId: integer('producto_id').notNull(),
   productoNombre: varchar('producto_nombre', { length: 300 }).notNull(),
   tipo: varchar('tipo', { length: 20 }).notNull(), // 'entrada' | 'salida' | 'reserva' | 'liberacion'
-  cantidad: integer('cantidad').notNull(),
-  stockAnterior: integer('stock_anterior').notNull(),
-  stockNuevo: integer('stock_nuevo').notNull(),
+  cantidad: numeric('cantidad', { precision: 14, scale: 4 }).notNull(),
+  stockAnterior: numeric('stock_anterior', { precision: 14, scale: 4 }).notNull(),
+  stockNuevo: numeric('stock_nuevo', { precision: 14, scale: 4 }).notNull(),
   referencia: varchar('referencia', { length: 20 }).notNull(), // 'compra' | 'factura' | 'pedido' | 'ajuste'
   referenciaId: integer('referencia_id'),
   referenciaNumero: varchar('referencia_numero', { length: 30 }).default(''),
@@ -428,6 +428,9 @@ export const componentesProducto = pgTable('componentes_producto', {
   componenteId: integer('componente_id').notNull(),
   componenteNombre: varchar('componente_nombre', { length: 300 }).notNull(),
   cantidad: numeric('cantidad', { precision: 12, scale: 4 }).notNull(),
+  // factorConversion: multiplica cantidad × factor para obtener las unidades a descontar del inventario.
+  // Ej: 100 g × 0.001 = 0.1 kg descontado del inventario si el ingrediente se lleva en kg.
+  factorConversion: numeric('factor_conversion', { precision: 12, scale: 6 }).default('1'),
   unidadId: integer('unidad_id'),
   unidad: varchar('unidad', { length: 50 }).default(''),
 });
