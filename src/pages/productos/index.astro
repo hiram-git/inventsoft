@@ -66,6 +66,9 @@ const productos = await store.getProductos();
             </td>
             <td>
               <div style="display:flex;gap:4px">
+                <a href={`/productos/${p.id}/ver`} class="btn btn-sm btn-outline" title="Ver detalle">
+                  <span class="material-icons-round" style="font-size:15px">visibility</span>
+                </a>
                 <a href={`/productos/${p.id}/editar`} class="btn btn-sm btn-outline">
                   <span class="material-icons-round" style="font-size:15px">edit</span>
                 </a>
