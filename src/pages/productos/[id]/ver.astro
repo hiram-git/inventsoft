@@ -4,12 +4,38 @@ import { store } from '../../../lib/store';
 
 const { id } = Astro.params;
 
-const [producto, kardex] = await Promise.all([
+const [producto, kardex, todasFacturas, todoInventario] = await Promise.all([
   store.getProducto(id!),
   store.getKardex({ productoId: id! }),
+  store.getFacturas(),
+  store.getInventario(),
 ]);
 
 if (!producto) return Astro.redirect('/productos');
+
+// Facturas that include this product — extract the matching line item per factura
+const ventasFacturas = todasFacturas
+  .filter(f => f.estado !== 'cancelada')
+  .flatMap(f => {
+    const item = f.items.find(i => String(i.productoId) === id);
+    if (!item) return [];
+    return [{
+      facturaId:      f.id,
+      numero:         f.numero,
+      fecha:          f.fecha,
+      clienteNombre:  f.clienteNombre,
+      estado:         f.estado,
+      cantidad:       item.cantidad,
+      precioUnitario: item.precioUnitario,
+      subtotal:       item.subtotal,
+    }];
+  })
+  .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''));
+
+// Inventory rows for this product (reservations across warehouses)
+const invRows = todoInventario.filter(i => String(i.productoId) === id);
+const totalReservado = invRows.reduce((s, r) => s + (r.stockReservado ?? 0), 0);
+const totalDisponible = invRows.reduce((s, r) => s + Math.max(0, r.stock - (r.stockReservado ?? 0)), 0);
 
 const paA = producto.precioA;
 const paB = producto.precioB;
@@ -29,6 +55,12 @@ const tipoColors: Record<string, string> = {
   liberacion: '#2563eb',
   ajuste:     '#7c3aed',
 };
+const estadoFacturaColor: Record<string, string> = {
+  pendiente: '#ca8a04',
+  parcial:   '#2563eb',
+  pagada:    '#16a34a',
+  vencida:   '#dc2626',
+};
 ---
 
 <AdminLayout title={`Ver: ${producto.nombre}`}>
@@ -38,7 +70,7 @@ const tipoColors: Record<string, string> = {
       {producto.codigo && <p style="color:var(--text-muted);font-size:0.85rem;margin:4px 0 0">Código: {producto.codigo}</p>}
     </div>
     <div style="display:flex;gap:8px">
-      <a href={`/productos/${id}/editar`} class="btn btn-secondary">
+      <a href={`/productos/${id}/editar`} class="btn btn-warning">
         <span class="material-icons-round">edit</span> Editar
       </a>
       <a href="/productos" class="btn btn-secondary">
@@ -59,12 +91,14 @@ const tipoColors: Record<string, string> = {
       <span class="material-icons-round" style="font-size:16px">inventory_2</span> Inventario
       {kardex.length > 0 && <span class="tab-badge">{kardex.length}</span>}
     </button>
+    <button class="tab-btn" onclick="showTab('ventas', this)">
+      <span class="material-icons-round" style="font-size:16px">point_of_sale</span> Ventas
+      {ventasFacturas.length > 0 && <span class="tab-badge">{ventasFacturas.length}</span>}
+    </button>
   </div>
 
   <!-- Tab: Información -->
   <div id="tab-info" class="tab-panel">
-
-    <!-- Identificación -->
     <div class="section-card">
       <h2 class="section-title">
         <span class="material-icons-round">badge</span> Identificación
@@ -80,20 +114,17 @@ const tipoColors: Record<string, string> = {
           <img src={producto.imagen} alt={producto.nombre} style="max-height:120px;border-radius:8px;border:1px solid var(--border);margin-top:6px;display:block" />
         </div>
       )}
-      <div style="margin-top:12px">
+      <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px">
         <span class:list={['badge', producto.activo ? 'badge-success' : 'badge-secondary']}>
           {producto.activo ? 'Activo' : 'Inactivo'}
         </span>
-        {producto.enviarACocina && (
-          <span class="badge badge-info" style="margin-left:8px">Enviar a cocina</span>
-        )}
+        {producto.enviarACocina && <span class="badge badge-info">Enviar a cocina</span>}
         {producto.tipoProducto && producto.tipoProducto !== 'simple' && (
-          <span class="badge badge-purple" style="margin-left:8px">{producto.tipoProducto === 'kit' ? 'Kit / Bundle' : 'Compuesto'}</span>
+          <span class="badge badge-purple">{producto.tipoProducto === 'kit' ? 'Kit / Bundle' : 'Compuesto'}</span>
         )}
       </div>
     </div>
 
-    <!-- Clasificación -->
     <div class="section-card">
       <h2 class="section-title">
         <span class="material-icons-round">category</span> Clasificación
@@ -106,7 +137,6 @@ const tipoColors: Record<string, string> = {
       </div>
     </div>
 
-    <!-- Descripciones -->
     {(producto.descripcion || producto.descripcionIngles || producto.descripcion2 || producto.descripcion3 || producto.caracteristicas) && (
       <div class="section-card">
         <h2 class="section-title">
@@ -157,19 +187,19 @@ const tipoColors: Record<string, string> = {
         </thead>
         <tbody>
           <tr>
-            <td><span class="price-label">Precio A</span></td>
+            <td><strong>Precio A</strong></td>
             <td>${(paA?.precio ?? producto.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
             <td>{(paA?.utilidad ?? 0).toFixed(2)}%</td>
             <td>${(paA?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
           </tr>
           <tr>
-            <td><span class="price-label">Precio B</span></td>
+            <td><strong>Precio B</strong></td>
             <td>${(paB?.precio ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
             <td>{(paB?.utilidad ?? 0).toFixed(2)}%</td>
             <td>${(paB?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
           </tr>
           <tr>
-            <td><span class="price-label">Precio C</span></td>
+            <td><strong>Precio C</strong></td>
             <td>${(paC?.precio ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
             <td>{(paC?.utilidad ?? 0).toFixed(2)}%</td>
             <td>${(paC?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
@@ -182,37 +212,73 @@ const tipoColors: Record<string, string> = {
   <!-- Tab: Inventario -->
   <div id="tab-inventario" class="tab-panel" style="display:none">
 
-    <!-- Stock summary -->
-    <div class="section-card">
-      <h2 class="section-title">
-        <span class="material-icons-round">inventory_2</span> Stock
-      </h2>
-      <div class="info-grid-3">
-        <div class="info-field">
-          <span class="info-label">Stock actual</span>
-          <span class:list={['stock-badge', {
-            'stock-ok':  producto.stock >= (producto.minimoInventario || 15),
-            'stock-low': producto.stock > 0 && producto.stock < (producto.minimoInventario || 15),
-            'stock-out': producto.stock === 0,
-          }]}>{producto.stock}</span>
-        </div>
-        <div class="info-field">
-          <span class="info-label">Mínimo</span>
-          <span class="info-value">{producto.minimoInventario ?? 0}</span>
-        </div>
-        <div class="info-field">
-          <span class="info-label">Máximo</span>
-          <span class="info-value">{producto.maximoInventario ?? 0}</span>
-        </div>
+    <!-- Stock summary cards -->
+    <div class="stock-cards">
+      <div class="stock-card">
+        <span class="stock-card-label">Stock total</span>
+        <span class:list={['stock-num', {
+          'c-ok':  producto.stock >= (producto.minimoInventario || 15),
+          'c-low': producto.stock > 0 && producto.stock < (producto.minimoInventario || 15),
+          'c-out': producto.stock === 0,
+        }]}>{producto.stock}</span>
+      </div>
+      <div class="stock-card">
+        <span class="stock-card-label">Reservado (pedidos)</span>
+        <span class="stock-num c-warn">{totalReservado}</span>
+      </div>
+      <div class="stock-card">
+        <span class="stock-card-label">Disponible</span>
+        <span class:list={['stock-num', totalDisponible > 0 ? 'c-ok' : 'c-out']}>{totalDisponible}</span>
+      </div>
+      <div class="stock-card">
+        <span class="stock-card-label">Mínimo</span>
+        <span class="stock-num">{producto.minimoInventario ?? 0}</span>
+      </div>
+      <div class="stock-card">
+        <span class="stock-card-label">Máximo</span>
+        <span class="stock-num">{producto.maximoInventario ?? 0}</span>
       </div>
     </div>
 
-    <!-- Movimientos / Kardex -->
-    <div class="section-card">
-      <h2 class="section-title">
-        <span class="material-icons-round">swap_vert</span> Movimientos (Kardex)
-      </h2>
+    <!-- Per-warehouse breakdown (if multiple warehouses have stock) -->
+    {invRows.length > 0 && (
+      <div class="section-card" style="margin-top:16px">
+        <h2 class="section-title">
+          <span class="material-icons-round">warehouse</span> Por almacén
+        </h2>
+        <div class="table-wrap">
+          <table class="kardex-table">
+            <thead>
+              <tr>
+                <th>Almacén</th>
+                <th style="text-align:right">Stock</th>
+                <th style="text-align:right">Reservado</th>
+                <th style="text-align:right">Disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invRows.map(row => {
+                const disp = Math.max(0, row.stock - (row.stockReservado ?? 0));
+                return (
+                  <tr>
+                    <td>{row.almacenNombre}</td>
+                    <td style="text-align:right;font-weight:600">{row.stock}</td>
+                    <td style={`text-align:right;color:${row.stockReservado > 0 ? '#ca8a04' : 'var(--text-muted)'}`}>{row.stockReservado ?? 0}</td>
+                    <td style={`text-align:right;font-weight:700;color:${disp > 0 ? '#16a34a' : '#dc2626'}`}>{disp}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
 
+    <!-- Kardex movements -->
+    <div class="section-card" style="margin-top:16px">
+      <h2 class="section-title">
+        <span class="material-icons-round">swap_vert</span> Movimientos de inventario
+      </h2>
       {kardex.length === 0 ? (
         <p style="color:var(--text-muted);font-size:0.875rem;margin:0">Sin movimientos registrados para este producto.</p>
       ) : (
@@ -235,7 +301,7 @@ const tipoColors: Record<string, string> = {
                 <tr>
                   <td style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">{k.fecha}</td>
                   <td>
-                    <span class="tipo-badge" style={`background:${tipoColors[k.tipo] ?? '#64748b'}20;color:${tipoColors[k.tipo] ?? '#64748b'}`}>
+                    <span class="tipo-badge" style={`background:${(tipoColors[k.tipo] ?? '#64748b')}20;color:${tipoColors[k.tipo] ?? '#64748b'}`}>
                       {tipoLabels[k.tipo] ?? k.tipo}
                     </span>
                   </td>
@@ -244,8 +310,8 @@ const tipoColors: Record<string, string> = {
                     {k.referencia}
                     {k.referenciaNumero && <span style="margin-left:4px;font-weight:600">#{k.referenciaNumero}</span>}
                   </td>
-                  <td style={`text-align:right;font-weight:600;color:${k.tipo === 'entrada' ? '#16a34a' : k.tipo === 'salida' ? '#dc2626' : 'inherit'}`}>
-                    {k.tipo === 'salida' ? '-' : '+'}{k.cantidad}
+                  <td style={`text-align:right;font-weight:600;color:${k.tipo === 'entrada' ? '#16a34a' : k.tipo === 'salida' ? '#dc2626' : k.tipo === 'reserva' ? '#ca8a04' : 'inherit'}`}>
+                    {(k.tipo === 'salida' || k.tipo === 'reserva') ? '-' : '+'}{k.cantidad}
                   </td>
                   <td style="text-align:right;font-size:0.85rem">{k.stockAnterior}</td>
                   <td style="text-align:right;font-weight:600">{k.stockNuevo}</td>
@@ -258,13 +324,86 @@ const tipoColors: Record<string, string> = {
       )}
     </div>
   </div>
+
+  <!-- Tab: Ventas -->
+  <div id="tab-ventas" class="tab-panel" style="display:none">
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">point_of_sale</span> Historial de ventas
+      </h2>
+      <p style="color:var(--text-muted);font-size:0.82rem;margin:0 0 16px">
+        Facturas activas (no canceladas) que incluyen este producto.
+      </p>
+
+      {ventasFacturas.length === 0 ? (
+        <p style="color:var(--text-muted);font-size:0.875rem;margin:0">Este producto no aparece en ninguna factura activa.</p>
+      ) : (
+        <>
+          <!-- Summary row -->
+          <div class="ventas-summary">
+            <div class="vs-card">
+              <span class="vs-label">Total facturas</span>
+              <span class="vs-num">{ventasFacturas.length}</span>
+            </div>
+            <div class="vs-card">
+              <span class="vs-label">Unidades vendidas</span>
+              <span class="vs-num">{ventasFacturas.reduce((s, v) => s + v.cantidad, 0)}</span>
+            </div>
+            <div class="vs-card">
+              <span class="vs-label">Ingresos totales</span>
+              <span class="vs-num">${ventasFacturas.reduce((s, v) => s + v.subtotal, 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+
+          <div class="table-wrap" style="margin-top:16px">
+            <table class="kardex-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Factura</th>
+                  <th>Cliente</th>
+                  <th>Estado</th>
+                  <th style="text-align:right">Cant.</th>
+                  <th style="text-align:right">Precio unit.</th>
+                  <th style="text-align:right">Subtotal</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {ventasFacturas.map(v => (
+                  <tr>
+                    <td style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">{v.fecha}</td>
+                    <td style="font-weight:600;font-size:0.85rem">{v.numero}</td>
+                    <td style="font-size:0.875rem">{v.clienteNombre}</td>
+                    <td>
+                      <span class="tipo-badge" style={`background:${(estadoFacturaColor[v.estado] ?? '#64748b')}18;color:${estadoFacturaColor[v.estado] ?? '#64748b'}`}>
+                        {v.estado.charAt(0).toUpperCase() + v.estado.slice(1)}
+                      </span>
+                    </td>
+                    <td style="text-align:right;font-weight:600">{v.cantidad}</td>
+                    <td style="text-align:right;font-size:0.875rem">${v.precioUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td style="text-align:right;font-weight:700;color:var(--primary)">${v.subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>
+                      <a href={`/facturas/${v.facturaId}`} class="btn btn-sm btn-outline" title="Ver factura">
+                        <span class="material-icons-round" style="font-size:14px">open_in_new</span>
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  </div>
 </AdminLayout>
 
 <style>
   .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
   h1 { font-size:1.5rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px; }
 
-  .tabs-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:2px solid var(--border); padding-bottom:0; }
+  .tabs-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:2px solid var(--border); padding-bottom:0; flex-wrap:wrap; }
   .tab-btn { display:inline-flex; align-items:center; gap:6px; padding:10px 16px; border:none; background:none; cursor:pointer; font-size:0.875rem; font-weight:500; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-2px; border-radius:var(--radius) var(--radius) 0 0; transition:all .15s; }
   .tab-btn:hover { background:#f8fafc; color:var(--text); }
   .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); background:#f0f7ff; }
@@ -286,20 +425,30 @@ const tipoColors: Record<string, string> = {
   .badge-info     { background:#dbeafe; color:#1d4ed8; }
   .badge-purple   { background:#ede9fe; color:#7c3aed; }
 
-  .stock-badge { display:inline-block; padding:4px 12px; border-radius:10px; font-size:1.1rem; font-weight:700; }
-  .stock-ok  { background:#dcfce7; color:#16a34a; }
-  .stock-low { background:#fef9c3; color:#ca8a04; }
-  .stock-out { background:#fee2e2; color:#dc2626; }
+  /* Stock summary cards */
+  .stock-cards { display:flex; gap:12px; flex-wrap:wrap; }
+  .stock-card { background:white; border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px; display:flex; flex-direction:column; gap:4px; min-width:120px; }
+  .stock-card-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:600; }
+  .stock-num { font-size:1.6rem; font-weight:800; line-height:1; }
+  .c-ok   { color:#16a34a; }
+  .c-low  { color:#ca8a04; }
+  .c-out  { color:#dc2626; }
+  .c-warn { color:#ca8a04; }
+
+  /* Ventas summary */
+  .ventas-summary { display:flex; gap:12px; flex-wrap:wrap; }
+  .vs-card { background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius); padding:14px 20px; display:flex; flex-direction:column; gap:4px; min-width:140px; }
+  .vs-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:600; }
+  .vs-num { font-size:1.3rem; font-weight:800; color:var(--primary); line-height:1.2; }
 
   .price-table { width:100%; border-collapse:collapse; }
   .price-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
   .price-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.875rem; }
   .price-table tr:last-child td { border-bottom:none; }
-  .price-label { font-weight:600; }
 
   .table-wrap { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; overflow-x:auto; }
-  .kardex-table { width:100%; border-collapse:collapse; font-size:0.875rem; min-width:700px; }
-  .kardex-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .kardex-table { width:100%; border-collapse:collapse; font-size:0.875rem; min-width:640px; }
+  .kardex-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); white-space:nowrap; }
   .kardex-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
   .kardex-table tr:last-child td { border-bottom:none; }
   .kardex-table tr:hover td { background:#fafafa; }
@@ -307,8 +456,13 @@ const tipoColors: Record<string, string> = {
   .tipo-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; }
 
   .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:1px solid transparent; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-sm { padding:4px 8px; }
   .btn-secondary { background:white; border-color:var(--border); color:var(--text); }
   .btn-secondary:hover { background:#f8fafc; }
+  .btn-warning { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; }
+  .btn-warning:hover { background:#fef3c7; border-color:#f59e0b; }
+  .btn-outline { background:white; border:1px solid var(--border); color:var(--text); }
+  .btn-outline:hover { background:#f8fafc; }
 
   @media (max-width:700px) { .info-grid-2,.info-grid-3 { grid-template-columns:1fr; } }
 </style>

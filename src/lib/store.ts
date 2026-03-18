@@ -170,6 +170,16 @@ function normalizeComponente(row: ComponenteProducto) {
     componenteId: String(row.componenteId),
     unidadId: row.unidadId ? String(row.unidadId) : null,
     cantidad: num(row.cantidad),
+    factorConversion: num((row as any).factorConversion ?? 1) || 1,
+  };
+}
+
+function normalizeInventarioRow<T extends { id: number; stock: any; stockReservado: any }>(row: T) {
+  return {
+    ...row,
+    id: String(row.id),
+    stock: num(row.stock),
+    stockReservado: num(row.stockReservado),
   };
 }
 
@@ -456,7 +466,7 @@ export const store = {
           productoId: item.productoId,
           productoNombre: item.productoNombre,
           tipo: 'salida',
-          cantidad: Math.ceil(item.cantidad),
+          cantidad: item.cantidad,
           stockAnterior,
           stockNuevo,
           referencia: 'factura',
@@ -582,10 +592,10 @@ export const store = {
   async getInventario(almacenId?: string) {
     if (almacenId) {
       const rows = await db.select().from(schema.inventario).where(eq(schema.inventario.almacenId, Number(almacenId)));
-      return rows.map(normalizeId);
+      return rows.map(normalizeInventarioRow);
     }
     const rows = await db.select().from(schema.inventario);
-    return rows.map(normalizeId);
+    return rows.map(normalizeInventarioRow);
   },
 
   async getInventarioItem(almacenId: string, productoId: string) {
@@ -595,7 +605,7 @@ export const store = {
         eq(schema.inventario.productoId, Number(productoId))
       )
     );
-    return rows[0] ? normalizeId(rows[0]) : undefined;
+    return rows[0] ? normalizeInventarioRow(rows[0]) : undefined;
   },
 
   // Internal helper: adjust stock (+/- delta) and reserved (+/- deltaReservado)
@@ -605,7 +615,7 @@ export const store = {
       const newStock = existing.stock + delta;
       const newReservado = Math.max(0, existing.stockReservado + deltaReservado);
       await db.update(schema.inventario)
-        .set({ stock: newStock, stockReservado: newReservado })
+        .set({ stock: String(newStock), stockReservado: String(newReservado) })
         .where(eq(schema.inventario.id, Number(existing.id)));
       return { ...existing, stock: newStock, stockReservado: newReservado };
     } else {
@@ -614,10 +624,10 @@ export const store = {
         almacenNombre,
         productoId: Number(productoId),
         productoNombre,
-        stock: Math.max(0, delta),
-        stockReservado: Math.max(0, deltaReservado),
+        stock: String(Math.max(0, delta)),
+        stockReservado: String(Math.max(0, deltaReservado)),
       }).returning();
-      return normalizeId(rows[0]);
+      return normalizeInventarioRow(rows[0]);
     }
   },
 
@@ -643,9 +653,9 @@ export const store = {
       productoId: Number(data.productoId),
       productoNombre: data.productoNombre,
       tipo: data.tipo,
-      cantidad: data.cantidad,
-      stockAnterior: data.stockAnterior,
-      stockNuevo: data.stockNuevo,
+      cantidad: String(data.cantidad),
+      stockAnterior: String(data.stockAnterior),
+      stockNuevo: String(data.stockNuevo),
       referencia: data.referencia,
       referenciaId: data.referenciaId,
       referenciaNumero: data.referenciaNumero ?? '',
@@ -676,7 +686,13 @@ export const store = {
     } else {
       rows = await db.select().from(schema.kardex).orderBy(desc(schema.kardex.id));
     }
-    return rows.map(normalizeId);
+    return rows.map(r => ({
+      ...r,
+      id: String(r.id),
+      cantidad: num(r.cantidad),
+      stockAnterior: num(r.stockAnterior),
+      stockNuevo: num(r.stockNuevo),
+    }));
   },
 
   // --- Compras ---
@@ -829,7 +845,7 @@ export const store = {
       const inv = await this.getInventarioItem(pedido.almacenId, item.productoId);
       const disponible = (inv?.stock ?? 0) - (inv?.stockReservado ?? 0);
       if (disponible < item.cantidad) {
-        return { ok: false, error: `Stock insuficiente para "${item.productoNombre}"${item.origenNombre ? ` (componente de "${item.origenNombre}")` : ''}. Disponible: ${disponible}, requerido: ${Math.ceil(item.cantidad)}.` };
+        return { ok: false, error: `Stock insuficiente para "${item.productoNombre}"${item.origenNombre ? ` (componente de "${item.origenNombre}")` : ''}. Disponible: ${disponible}, requerido: ${item.cantidad}.` };
       }
     }
 
@@ -846,7 +862,7 @@ export const store = {
         productoId: item.productoId,
         productoNombre: item.productoNombre,
         tipo: 'reserva',
-        cantidad: Math.ceil(item.cantidad),
+        cantidad: item.cantidad,
         stockAnterior: stockDisponibleAnterior,
         stockNuevo: stockDisponibleNuevo,
         referencia: 'pedido',
@@ -884,7 +900,7 @@ export const store = {
           productoId: item.productoId,
           productoNombre: item.productoNombre,
           tipo: 'liberacion',
-          cantidad: Math.ceil(item.cantidad),
+          cantidad: item.cantidad,
           stockAnterior: stockDisponibleAnterior,
           stockNuevo: stockDisponibleNuevo,
           referencia: 'pedido',
@@ -1168,7 +1184,7 @@ export const store = {
         productoId: item.productoId,
         productoNombre: item.productoNombre,
         tipo: 'salida',
-        cantidad: Math.ceil(item.cantidad),
+        cantidad: item.cantidad,
         stockAnterior,
         stockNuevo,
         referencia: 'pedido',
@@ -1346,7 +1362,9 @@ export const store = {
   },
 
   // ── Inventario Compuesto: helper que expande items a sus componentes ──────
-  // Para compuesto/kit: reemplaza el item por sus componentes × cantidad vendida
+  // Para compuesto/kit: reemplaza el item por sus componentes × cantidad vendida × factorConversion
+  // factorConversion convierte la unidad de la receta a la unidad del inventario
+  //   Ej: receta dice 100 g, inventario lleva kg → factor = 0.001 → descuenta 0.1
   // Para simple: devuelve el item sin cambios
   async _expandirItemsInventario(
     items: { productoId: string; productoNombre: string; cantidad: number }[]
@@ -1357,10 +1375,12 @@ export const store = {
       if (producto && (producto.tipoProducto === 'compuesto' || producto.tipoProducto === 'kit')) {
         const componentes = await this.getComponentesProducto(item.productoId);
         for (const comp of componentes) {
+          const factor = comp.factorConversion || 1;
           resultado.push({
             productoId: comp.componenteId,
             productoNombre: comp.componenteNombre,
-            cantidad: comp.cantidad * item.cantidad,
+            // cantidad en unidades del inventario = cantidad_receta × factor × veces vendidas
+            cantidad: comp.cantidad * factor * item.cantidad,
             origenNombre: item.productoNombre,
           });
         }
@@ -1380,7 +1400,7 @@ export const store = {
 
   async setComponentesProducto(
     productoId: string,
-    componentes: { componenteId: string; componenteNombre: string; cantidad: number; unidad?: string; unidadId?: string }[]
+    componentes: { componenteId: string; componenteNombre: string; cantidad: number; factorConversion?: number; unidad?: string; unidadId?: string }[]
   ) {
     // Reemplazar todos los componentes del producto
     await db.delete(schema.componentesProducto)
@@ -1392,6 +1412,7 @@ export const store = {
         componenteId: Number(c.componenteId),
         componenteNombre: c.componenteNombre,
         cantidad: String(c.cantidad),
+        factorConversion: String(c.factorConversion ?? 1),
         unidadId: c.unidadId ? Number(c.unidadId) : null,
         unidad: c.unidad ?? '',
       }))

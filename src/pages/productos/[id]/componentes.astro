@@ -27,16 +27,18 @@ if (Astro.request.method === 'POST') {
     const componenteIds    = fd.getAll('componenteId[]');
     const componenteNombres = fd.getAll('componenteNombre[]');
     const cantidades        = fd.getAll('cantidad[]');
+    const factores          = fd.getAll('factorConversion[]');
     const unidadIds         = fd.getAll('unidadId[]');
     const unidades          = fd.getAll('unidad[]');
 
     const componentes = componenteIds
       .map((cid, idx) => ({
-        componenteId:    String(cid),
+        componenteId:     String(cid),
         componenteNombre: String(componenteNombres[idx] ?? ''),
-        cantidad:        parseFloat(String(cantidades[idx] ?? '1')) || 1,
-        unidadId:        String(unidadIds[idx] ?? '') || undefined,
-        unidad:          String(unidades[idx] ?? ''),
+        cantidad:         parseFloat(String(cantidades[idx] ?? '1')) || 1,
+        factorConversion: parseFloat(String(factores[idx] ?? '1')) || 1,
+        unidadId:         String(unidadIds[idx] ?? '') || undefined,
+        unidad:           String(unidades[idx] ?? ''),
       }))
       .filter(c => c.componenteId && c.componenteNombre);
 
@@ -169,53 +171,75 @@ const todasUnidades       = await store.getUnidades();
           <table class="comp-table">
             <thead>
               <tr>
-                <th>Componente / Producto</th>
-                <th style="width:100px">Cantidad</th>
-                <th style="width:140px">Unidad</th>
+                <th>Componente / Ingrediente</th>
+                <th style="width:90px">Cantidad</th>
+                <th style="width:110px">Unidad receta</th>
+                <th style="width:110px" title="Factor que convierte la cantidad de la receta a las unidades del inventario. Ej: si la receta usa gramos (100g) y el inventario lleva kilogramos, factor = 0.001">
+                  Factor inv. <span class="material-icons-round" style="font-size:13px;vertical-align:middle;color:var(--text-muted)">help_outline</span>
+                </th>
+                <th style="width:120px;color:var(--primary)">Descuento real</th>
                 <th style="width:44px"></th>
               </tr>
             </thead>
             <tbody id="compBody">
-              {componentes.map(c => (
-                <tr>
-                  <td>
-                    <select name="componenteId[]" class="form-control comp-select">
-                      <option value="">— Seleccionar —</option>
-                      {todosProductos.map(p => (
-                        <option value={p.id} data-nombre={p.nombre} selected={String(p.id) === String(c.componenteId)}>
-                          {p.nombre}
-                        </option>
-                      ))}
-                    </select>
-                    <input type="hidden" name="componenteNombre[]" class="comp-nombre" value={c.componenteNombre} />
-                  </td>
-                  <td>
-                    <input type="number" name="cantidad[]" class="form-control" value={c.cantidad} min="0.001" step="0.001" style="width:90px" />
-                  </td>
-                  <td>
-                    <select name="unidadId[]" class="form-control comp-unidad-select" style="width:130px">
-                      <option value="">— Sin unidad —</option>
-                      {todasUnidades.filter(u => u.activo).map(u => (
-                        <option value={u.id}
-                          data-simbolo={u.simbolo}
-                          selected={String(u.id) === String(c.unidadId)}>
-                          {u.simbolo} — {u.nombre}
-                        </option>
-                      ))}
-                    </select>
-                    <input type="hidden" name="unidad[]" class="comp-unidad-nombre" value={
-                      todasUnidades.find(u => String(u.id) === String(c.unidadId))?.simbolo ?? c.unidad ?? ''
-                    } />
-                  </td>
-                  <td>
-                    <button type="button" class="btn-rm-comp">
-                      <span class="material-icons-round" style="font-size:16px">delete</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {componentes.map(c => {
+                const factor = c.factorConversion ?? 1;
+                const descuento = +(c.cantidad * factor).toFixed(6);
+                const unidSimbolo = todasUnidades.find(u => String(u.id) === String(c.unidadId))?.simbolo ?? c.unidad ?? '';
+                return (
+                  <tr>
+                    <td>
+                      <select name="componenteId[]" class="form-control comp-select">
+                        <option value="">— Seleccionar —</option>
+                        {todosProductos.map(p => (
+                          <option value={p.id} data-nombre={p.nombre} selected={String(p.id) === String(c.componenteId)}>
+                            {p.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      <input type="hidden" name="componenteNombre[]" class="comp-nombre" value={c.componenteNombre} />
+                    </td>
+                    <td>
+                      <input type="number" name="cantidad[]" class="form-control comp-cant" value={c.cantidad} min="0.0001" step="any" style="width:84px" />
+                    </td>
+                    <td>
+                      <select name="unidadId[]" class="form-control comp-unidad-select" style="width:100px">
+                        <option value="">— —</option>
+                        {todasUnidades.filter(u => u.activo).map(u => (
+                          <option value={u.id} data-simbolo={u.simbolo} selected={String(u.id) === String(c.unidadId)}>
+                            {u.simbolo} — {u.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      <input type="hidden" name="unidad[]" class="comp-unidad-nombre" value={unidSimbolo} />
+                    </td>
+                    <td>
+                      <div style="display:flex;flex-direction:column;gap:3px">
+                        <input type="number" name="factorConversion[]" class="form-control comp-factor" value={factor} min="0.000001" step="any" style="width:94px" />
+                        <div class="factor-presets">
+                          <button type="button" class="preset-btn" data-factor="1" title="×1 (misma unidad)">×1</button>
+                          <button type="button" class="preset-btn" data-factor="0.001" title="g→kg o ml→L">÷1000</button>
+                          <button type="button" class="preset-btn" data-factor="1000" title="kg→g o L→ml">×1000</button>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="comp-descuento" style="font-weight:700;color:var(--primary);font-size:0.85rem">
+                      {descuento}
+                    </td>
+                    <td>
+                      <button type="button" class="btn-rm-comp">
+                        <span class="material-icons-round" style="font-size:16px">delete</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:8px 0 0;line-height:1.5">
+            <strong>Descuento real</strong> = Cantidad × Factor. Es lo que se descuenta del inventario al vender.<br/>
+            Ej: Receta usa 100 g de carne, inventario lleva carne en <em>kg</em> → Factor = 0.001 → Descuento real = 0.1 kg.
+          </p>
         </div>
 
         <p id="compEmpty" style={`color:var(--text-muted);font-size:0.85rem;margin:8px 0;display:${componentes.length === 0 ? 'block' : 'none'}`}>
@@ -342,6 +366,10 @@ const todasUnidades       = await store.getUnidades();
     align-items: center;
   }
   .btn-rm-comp:hover { background: #fee2e2; }
+
+  .factor-presets { display:flex; gap:2px; margin-top:2px; }
+  .preset-btn { padding:1px 5px; font-size:0.68rem; border:1px solid var(--border); background:white; border-radius:4px; cursor:pointer; color:var(--text-muted); font-weight:600; }
+  .preset-btn:hover { background:#f0f7ff; border-color:var(--primary); color:var(--primary); }
 </style>
 
 <script define:vars={{ todosProductos, todasUnidades }}>
@@ -352,62 +380,82 @@ const todasUnidades       = await store.getUnidades();
     compEmpty.style.display = compBody.rows.length === 0 ? 'block' : 'none';
   }
 
+  function recalcDescuento(row) {
+    var cant   = parseFloat(row.querySelector('.comp-cant')?.value)   || 0;
+    var factor = parseFloat(row.querySelector('.comp-factor')?.value) || 1;
+    var cell   = row.querySelector('.comp-descuento');
+    if (cell) cell.textContent = (cant * factor).toFixed(6).replace(/\.?0+$/, '') || '0';
+  }
+
   function attachSelectSync(row) {
     row.querySelector('.comp-select').addEventListener('change', function() {
-      const opt = this.options[this.selectedIndex];
-      row.querySelector('.comp-nombre').value = opt.dataset.nombre ?? '';
+      var opt = this.options[this.selectedIndex];
+      row.querySelector('.comp-nombre').value = opt.dataset.nombre || '';
     });
-    const unidadSel = row.querySelector('.comp-unidad-select');
+
+    var unidadSel = row.querySelector('.comp-unidad-select');
     if (unidadSel) {
       unidadSel.addEventListener('change', function() {
-        const opt = this.options[this.selectedIndex];
-        row.querySelector('.comp-unidad-nombre').value = opt.dataset.simbolo ?? '';
+        var opt = this.options[this.selectedIndex];
+        row.querySelector('.comp-unidad-nombre').value = opt.dataset.simbolo || '';
       });
     }
-    row.querySelector('.btn-rm-comp').addEventListener('click', () => {
+
+    var cantInput   = row.querySelector('.comp-cant');
+    var factorInput = row.querySelector('.comp-factor');
+    if (cantInput)   cantInput.addEventListener('input',   function() { recalcDescuento(row); });
+    if (factorInput) factorInput.addEventListener('input', function() { recalcDescuento(row); });
+
+    row.querySelectorAll('.preset-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var f = btn.dataset.factor;
+        if (factorInput) { factorInput.value = f; recalcDescuento(row); }
+      });
+    });
+
+    row.querySelector('.btn-rm-comp').addEventListener('click', function() {
       row.remove();
       syncEmpty();
     });
   }
 
   // Vincular las filas ya renderadas
-  compBody.querySelectorAll('tr').forEach(tr => attachSelectSync(tr));
+  compBody.querySelectorAll('tr').forEach(function(tr) { attachSelectSync(tr); });
 
-  document.getElementById('addCompBtn')?.addEventListener('click', () => {
-    const prodOpts = todosProductos.map(p =>
-      `<option value="${p.id}" data-nombre="${p.nombre.replace(/"/g, '&quot;')}">${p.nombre}</option>`
-    ).join('');
+  document.getElementById('addCompBtn')?.addEventListener('click', function() {
+    var prodOpts = todosProductos.map(function(p) {
+      return '<option value="' + p.id + '" data-nombre="' + p.nombre.replace(/"/g, '&quot;') + '">' + p.nombre + '</option>';
+    }).join('');
 
-    const unidOpts = todasUnidades
-      .filter(u => u.activo)
-      .map(u => `<option value="${u.id}" data-simbolo="${u.simbolo}">${u.simbolo} — ${u.nombre}</option>`)
+    var unidOpts = todasUnidades
+      .filter(function(u) { return u.activo; })
+      .map(function(u) { return '<option value="' + u.id + '" data-simbolo="' + u.simbolo + '">' + u.simbolo + ' — ' + u.nombre + '</option>'; })
       .join('');
 
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>
-        <select name="componenteId[]" class="form-control comp-select">
-          <option value="">— Seleccionar —</option>
-          ${prodOpts}
-        </select>
-        <input type="hidden" name="componenteNombre[]" class="comp-nombre" value="">
-      </td>
-      <td>
-        <input type="number" name="cantidad[]" class="form-control" value="1" min="0.001" step="0.001" style="width:90px">
-      </td>
-      <td>
-        <select name="unidadId[]" class="form-control comp-unidad-select" style="width:130px">
-          <option value="">— Sin unidad —</option>
-          ${unidOpts}
-        </select>
-        <input type="hidden" name="unidad[]" class="comp-unidad-nombre" value="">
-      </td>
-      <td>
-        <button type="button" class="btn-rm-comp">
-          <span class="material-icons-round" style="font-size:16px">delete</span>
-        </button>
-      </td>
-    `;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' +
+        '<select name="componenteId[]" class="form-control comp-select"><option value="">— Seleccionar —</option>' + prodOpts + '</select>' +
+        '<input type="hidden" name="componenteNombre[]" class="comp-nombre" value="">' +
+      '</td>' +
+      '<td><input type="number" name="cantidad[]" class="form-control comp-cant" value="1" min="0.0001" step="any" style="width:84px"></td>' +
+      '<td>' +
+        '<select name="unidadId[]" class="form-control comp-unidad-select" style="width:100px"><option value="">— —</option>' + unidOpts + '</select>' +
+        '<input type="hidden" name="unidad[]" class="comp-unidad-nombre" value="">' +
+      '</td>' +
+      '<td>' +
+        '<div style="display:flex;flex-direction:column;gap:3px">' +
+          '<input type="number" name="factorConversion[]" class="form-control comp-factor" value="1" min="0.000001" step="any" style="width:94px">' +
+          '<div class="factor-presets">' +
+            '<button type="button" class="preset-btn" data-factor="1" title="×1 (misma unidad)">×1</button>' +
+            '<button type="button" class="preset-btn" data-factor="0.001" title="g→kg o ml→L">÷1000</button>' +
+            '<button type="button" class="preset-btn" data-factor="1000" title="kg→g o L→ml">×1000</button>' +
+          '</div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="comp-descuento" style="font-weight:700;color:var(--primary);font-size:0.85rem">1</td>' +
+      '<td><button type="button" class="btn-rm-comp"><span class="material-icons-round" style="font-size:16px">delete</span></button></td>';
+
     attachSelectSync(tr);
     compBody.appendChild(tr);
     syncEmpty();

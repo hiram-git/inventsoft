@@ -67,7 +67,7 @@ const servicios = await store.getServicios();
                 <a href={`/servicios/${s.id}/ver`} class="btn btn-secondary btn-sm" title="Ver detalle">
                   <span class="material-icons-round" style="font-size:16px">visibility</span>
                 </a>
-                <a href={`/servicios/${s.id}/editar`} class="btn btn-secondary btn-sm">
+                <a href={`/servicios/${s.id}/editar`} class="btn btn-warning btn-sm" title="Editar">
                   <span class="material-icons-round" style="font-size:16px">edit</span>
                 </a>
                 <form method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar este servicio?')">
@@ -102,6 +102,8 @@ const servicios = await store.getServicios();
   .btn-primary:hover { background:var(--primary-dark); }
   .btn-secondary { background:white; border-color:var(--border); color:var(--text); }
   .btn-secondary:hover { background:#f8fafc; }
+  .btn-warning { background:#fffbeb; border-color:#fcd34d; color:#92400e; border:1px solid #fcd34d; }
+  .btn-warning:hover { background:#fef3c7; border-color:#f59e0b; }
   .btn-danger { background:var(--danger); color:white; }
   .btn-danger:hover { background:#b91c1c; }
   .btn-sm { padding:4px 10px; font-size:0.8rem; }
