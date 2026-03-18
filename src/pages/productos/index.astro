@@ -69,7 +69,7 @@ const productos = await store.getProductos();
                 <a href={`/productos/${p.id}/ver`} class="btn btn-sm btn-outline" title="Ver detalle">
                   <span class="material-icons-round" style="font-size:15px">visibility</span>
                 </a>
-                <a href={`/productos/${p.id}/editar`} class="btn btn-sm btn-outline">
+                <a href={`/productos/${p.id}/editar`} class="btn btn-sm btn-warning" title="Editar">
                   <span class="material-icons-round" style="font-size:15px">edit</span>
                 </a>
                 <form method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar este producto?')">
@@ -115,6 +115,8 @@ const productos = await store.getProductos();
   .btn-primary:hover { background:var(--primary-dark); }
   .btn-outline  { background:white; border-color:var(--border); color:var(--text); }
   .btn-outline:hover { background:#f8fafc; }
+  .btn-warning  { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+  .btn-warning:hover { background:#fef3c7; border-color:#f59e0b; }
   .btn-danger   { background:var(--danger); color:white; }
   .btn-danger:hover { background:#b91c1c; }
 </style>
