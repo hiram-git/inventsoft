@@ -1,0 +1,323 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+const { id } = Astro.params;
+
+const [producto, kardex] = await Promise.all([
+  store.getProducto(id!),
+  store.getKardex({ productoId: id! }),
+]);
+
+if (!producto) return Astro.redirect('/productos');
+
+const paA = producto.precioA;
+const paB = producto.precioB;
+const paC = producto.precioC;
+
+const tipoLabels: Record<string, string> = {
+  entrada:    'Entrada',
+  salida:     'Salida',
+  reserva:    'Reserva',
+  liberacion: 'Liberación',
+  ajuste:     'Ajuste',
+};
+const tipoColors: Record<string, string> = {
+  entrada:    '#16a34a',
+  salida:     '#dc2626',
+  reserva:    '#ca8a04',
+  liberacion: '#2563eb',
+  ajuste:     '#7c3aed',
+};
+---
+
+<AdminLayout title={`Ver: ${producto.nombre}`}>
+  <div class="page-header">
+    <div>
+      <h1><span class="material-icons-round">visibility</span> {producto.nombre}</h1>
+      {producto.codigo && <p style="color:var(--text-muted);font-size:0.85rem;margin:4px 0 0">Código: {producto.codigo}</p>}
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href={`/productos/${id}/editar`} class="btn btn-secondary">
+        <span class="material-icons-round">edit</span> Editar
+      </a>
+      <a href="/productos" class="btn btn-secondary">
+        <span class="material-icons-round">arrow_back</span> Volver
+      </a>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" onclick="showTab('info', this)">
+      <span class="material-icons-round" style="font-size:16px">info</span> Información
+    </button>
+    <button class="tab-btn" onclick="showTab('precios', this)">
+      <span class="material-icons-round" style="font-size:16px">payments</span> Precios
+    </button>
+    <button class="tab-btn" onclick="showTab('inventario', this)">
+      <span class="material-icons-round" style="font-size:16px">inventory_2</span> Inventario
+      {kardex.length > 0 && <span class="tab-badge">{kardex.length}</span>}
+    </button>
+  </div>
+
+  <!-- Tab: Información -->
+  <div id="tab-info" class="tab-panel">
+
+    <!-- Identificación -->
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">badge</span> Identificación
+      </h2>
+      <div class="info-grid-3">
+        <div class="info-field"><span class="info-label">Código</span><span class="info-value">{producto.codigo || '—'}</span></div>
+        <div class="info-field"><span class="info-label">Referencia</span><span class="info-value">{producto.referencia || '—'}</span></div>
+        <div class="info-field"><span class="info-label">Nombre</span><span class="info-value">{producto.nombre}</span></div>
+      </div>
+      {producto.imagen && (
+        <div style="margin-top:12px">
+          <span class="info-label">Imagen</span>
+          <img src={producto.imagen} alt={producto.nombre} style="max-height:120px;border-radius:8px;border:1px solid var(--border);margin-top:6px;display:block" />
+        </div>
+      )}
+      <div style="margin-top:12px">
+        <span class:list={['badge', producto.activo ? 'badge-success' : 'badge-secondary']}>
+          {producto.activo ? 'Activo' : 'Inactivo'}
+        </span>
+        {producto.enviarACocina && (
+          <span class="badge badge-info" style="margin-left:8px">Enviar a cocina</span>
+        )}
+        {producto.tipoProducto && producto.tipoProducto !== 'simple' && (
+          <span class="badge badge-purple" style="margin-left:8px">{producto.tipoProducto === 'kit' ? 'Kit / Bundle' : 'Compuesto'}</span>
+        )}
+      </div>
+    </div>
+
+    <!-- Clasificación -->
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">category</span> Clasificación
+      </h2>
+      <div class="info-grid-2">
+        <div class="info-field"><span class="info-label">Departamento</span><span class="info-value">{producto.departamento || '—'}</span></div>
+        <div class="info-field"><span class="info-label">Grupo</span><span class="info-value">{producto.grupo || '—'}</span></div>
+        <div class="info-field"><span class="info-label">Marca</span><span class="info-value">{producto.marca || '—'}</span></div>
+        <div class="info-field"><span class="info-label">Línea</span><span class="info-value">{producto.linea || '—'}</span></div>
+      </div>
+    </div>
+
+    <!-- Descripciones -->
+    {(producto.descripcion || producto.descripcionIngles || producto.descripcion2 || producto.descripcion3 || producto.caracteristicas) && (
+      <div class="section-card">
+        <h2 class="section-title">
+          <span class="material-icons-round">description</span> Descripciones
+        </h2>
+        {producto.descripcion && (
+          <div class="info-field" style="margin-bottom:12px">
+            <span class="info-label">Español</span>
+            <p style="margin:4px 0 0;white-space:pre-line;font-size:0.875rem">{producto.descripcion}</p>
+          </div>
+        )}
+        {producto.descripcionIngles && (
+          <div class="info-field" style="margin-bottom:12px">
+            <span class="info-label">Inglés</span>
+            <p style="margin:4px 0 0;white-space:pre-line;font-size:0.875rem">{producto.descripcionIngles}</p>
+          </div>
+        )}
+        {producto.caracteristicas && (
+          <div class="info-field">
+            <span class="info-label">Características</span>
+            <p style="margin:4px 0 0;white-space:pre-line;font-size:0.875rem">{producto.caracteristicas}</p>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+
+  <!-- Tab: Precios -->
+  <div id="tab-precios" class="tab-panel" style="display:none">
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">payments</span> Costos y Precios
+      </h2>
+      <div class="info-grid-3" style="margin-bottom:20px">
+        <div class="info-field">
+          <span class="info-label">Costo</span>
+          <span class="info-value info-money">${producto.costo.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+      <table class="price-table">
+        <thead>
+          <tr>
+            <th>Lista</th>
+            <th>Precio (sin IVA)</th>
+            <th>Utilidad %</th>
+            <th>Precio + IVA</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="price-label">Precio A</span></td>
+            <td>${(paA?.precio ?? producto.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+            <td>{(paA?.utilidad ?? 0).toFixed(2)}%</td>
+            <td>${(paA?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+          </tr>
+          <tr>
+            <td><span class="price-label">Precio B</span></td>
+            <td>${(paB?.precio ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+            <td>{(paB?.utilidad ?? 0).toFixed(2)}%</td>
+            <td>${(paB?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+          </tr>
+          <tr>
+            <td><span class="price-label">Precio C</span></td>
+            <td>${(paC?.precio ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+            <td>{(paC?.utilidad ?? 0).toFixed(2)}%</td>
+            <td>${(paC?.precioConImpuesto ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tab: Inventario -->
+  <div id="tab-inventario" class="tab-panel" style="display:none">
+
+    <!-- Stock summary -->
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">inventory_2</span> Stock
+      </h2>
+      <div class="info-grid-3">
+        <div class="info-field">
+          <span class="info-label">Stock actual</span>
+          <span class:list={['stock-badge', {
+            'stock-ok':  producto.stock >= (producto.minimoInventario || 15),
+            'stock-low': producto.stock > 0 && producto.stock < (producto.minimoInventario || 15),
+            'stock-out': producto.stock === 0,
+          }]}>{producto.stock}</span>
+        </div>
+        <div class="info-field">
+          <span class="info-label">Mínimo</span>
+          <span class="info-value">{producto.minimoInventario ?? 0}</span>
+        </div>
+        <div class="info-field">
+          <span class="info-label">Máximo</span>
+          <span class="info-value">{producto.maximoInventario ?? 0}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Movimientos / Kardex -->
+    <div class="section-card">
+      <h2 class="section-title">
+        <span class="material-icons-round">swap_vert</span> Movimientos (Kardex)
+      </h2>
+
+      {kardex.length === 0 ? (
+        <p style="color:var(--text-muted);font-size:0.875rem;margin:0">Sin movimientos registrados para este producto.</p>
+      ) : (
+        <div class="table-wrap">
+          <table class="kardex-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Almacén</th>
+                <th>Referencia</th>
+                <th style="text-align:right">Cantidad</th>
+                <th style="text-align:right">Stock Ant.</th>
+                <th style="text-align:right">Stock Nuevo</th>
+                <th>Notas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kardex.map(k => (
+                <tr>
+                  <td style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">{k.fecha}</td>
+                  <td>
+                    <span class="tipo-badge" style={`background:${tipoColors[k.tipo] ?? '#64748b'}20;color:${tipoColors[k.tipo] ?? '#64748b'}`}>
+                      {tipoLabels[k.tipo] ?? k.tipo}
+                    </span>
+                  </td>
+                  <td style="font-size:0.85rem">{k.almacenNombre}</td>
+                  <td style="font-size:0.82rem;color:var(--text-muted)">
+                    {k.referencia}
+                    {k.referenciaNumero && <span style="margin-left:4px;font-weight:600">#{k.referenciaNumero}</span>}
+                  </td>
+                  <td style={`text-align:right;font-weight:600;color:${k.tipo === 'entrada' ? '#16a34a' : k.tipo === 'salida' ? '#dc2626' : 'inherit'}`}>
+                    {k.tipo === 'salida' ? '-' : '+'}{k.cantidad}
+                  </td>
+                  <td style="text-align:right;font-size:0.85rem">{k.stockAnterior}</td>
+                  <td style="text-align:right;font-weight:600">{k.stockNuevo}</td>
+                  <td style="font-size:0.8rem;color:var(--text-muted)">{k.notas || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px; }
+
+  .tabs-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:2px solid var(--border); padding-bottom:0; }
+  .tab-btn { display:inline-flex; align-items:center; gap:6px; padding:10px 16px; border:none; background:none; cursor:pointer; font-size:0.875rem; font-weight:500; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-2px; border-radius:var(--radius) var(--radius) 0 0; transition:all .15s; }
+  .tab-btn:hover { background:#f8fafc; color:var(--text); }
+  .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); background:#f0f7ff; }
+  .tab-badge { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; background:var(--primary); color:white; border-radius:999px; font-size:0.7rem; font-weight:700; }
+
+  .section-card { background:white; border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:20px; }
+  .section-title { font-size:1rem; font-weight:600; margin:0 0 16px; display:flex; align-items:center; gap:8px; }
+
+  .info-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .info-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  .info-field { display:flex; flex-direction:column; gap:2px; }
+  .info-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:600; }
+  .info-value { font-size:0.9rem; color:var(--text); }
+  .info-money { font-size:1.05rem; font-weight:700; color:var(--primary); }
+
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:600; }
+  .badge-success  { background:#dcfce7; color:#16a34a; }
+  .badge-secondary{ background:#f1f5f9; color:#64748b; }
+  .badge-info     { background:#dbeafe; color:#1d4ed8; }
+  .badge-purple   { background:#ede9fe; color:#7c3aed; }
+
+  .stock-badge { display:inline-block; padding:4px 12px; border-radius:10px; font-size:1.1rem; font-weight:700; }
+  .stock-ok  { background:#dcfce7; color:#16a34a; }
+  .stock-low { background:#fef9c3; color:#ca8a04; }
+  .stock-out { background:#fee2e2; color:#dc2626; }
+
+  .price-table { width:100%; border-collapse:collapse; }
+  .price-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+  .price-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.875rem; }
+  .price-table tr:last-child td { border-bottom:none; }
+  .price-label { font-weight:600; }
+
+  .table-wrap { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; overflow-x:auto; }
+  .kardex-table { width:100%; border-collapse:collapse; font-size:0.875rem; min-width:700px; }
+  .kardex-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .kardex-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .kardex-table tr:last-child td { border-bottom:none; }
+  .kardex-table tr:hover td { background:#fafafa; }
+
+  .tipo-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; }
+
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:1px solid transparent; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-secondary { background:white; border-color:var(--border); color:var(--text); }
+  .btn-secondary:hover { background:#f8fafc; }
+
+  @media (max-width:700px) { .info-grid-2,.info-grid-3 { grid-template-columns:1fr; } }
+</style>
+
+<script is:inline>
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('tab-' + name).style.display = '';
+  btn.classList.add('active');
+}
+</script>
