@@ -1,0 +1,209 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+let error = '';
+let success = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const accion = fd.get('accion')?.toString() ?? '';
+
+  if (accion === 'crear') {
+    const nombre = fd.get('nombre')?.toString().trim() ?? '';
+    const simbolo = fd.get('simbolo')?.toString().trim() ?? '';
+    const tipo = fd.get('tipo')?.toString() ?? 'unidad';
+    if (!nombre || !simbolo) {
+      error = 'Nombre y símbolo son requeridos.';
+    } else {
+      try {
+        await store.createUnidad({ nombre, simbolo, tipo });
+        success = 'Unidad creada correctamente.';
+      } catch {
+        error = 'Error al crear la unidad.';
+      }
+    }
+  }
+
+  if (accion === 'editar') {
+    const id = fd.get('id')?.toString() ?? '';
+    const nombre = fd.get('nombre')?.toString().trim() ?? '';
+    const simbolo = fd.get('simbolo')?.toString().trim() ?? '';
+    const tipo = fd.get('tipo')?.toString() ?? 'unidad';
+    const activo = fd.get('activo') === '1';
+    if (!nombre || !simbolo) {
+      error = 'Nombre y símbolo son requeridos.';
+    } else {
+      try {
+        await store.updateUnidad(id, { nombre, simbolo, tipo, activo });
+        success = 'Unidad actualizada correctamente.';
+      } catch {
+        error = 'Error al actualizar la unidad.';
+      }
+    }
+  }
+
+  if (accion === 'eliminar') {
+    const id = fd.get('id')?.toString() ?? '';
+    try {
+      await store.deleteUnidad(id);
+      success = 'Unidad eliminada.';
+    } catch {
+      error = 'No se pudo eliminar la unidad.';
+    }
+  }
+}
+
+const unidades = await store.getUnidades();
+
+const tipos = [
+  { value: 'unidad',    label: 'Unidad (und, pza, caja…)' },
+  { value: 'masa',      label: 'Masa (kg, g, lb…)' },
+  { value: 'volumen',   label: 'Volumen (L, ml, gal…)' },
+  { value: 'longitud',  label: 'Longitud (m, cm, in…)' },
+  { value: 'area',      label: 'Área (m², ft²…)' },
+  { value: 'tiempo',    label: 'Tiempo (h, min, s…)' },
+  { value: 'otro',      label: 'Otro' },
+];
+---
+
+<AdminLayout title="Unidades de Medida">
+  <div class="page-header">
+    <h1>Unidades de Medida</h1>
+    <button class="btn btn-primary" onclick="document.getElementById('modalCrear').showModal()">
+      <span class="material-icons-round" style="font-size:18px">add</span> Nueva Unidad
+    </button>
+  </div>
+
+  {error   && <div class="alert alert-error"   style="margin-bottom:16px">{error}</div>}
+  {success && <div class="alert alert-success" style="margin-bottom:16px">{success}</div>}
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Símbolo</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {unidades.length === 0 && (
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No hay unidades registradas.</td></tr>
+        )}
+        {unidades.map(u => (
+          <tr>
+            <td>{u.nombre}</td>
+            <td><strong>{u.simbolo}</strong></td>
+            <td style="color:var(--text-muted);font-size:0.85rem">{u.tipo}</td>
+            <td>
+              <span class:list={['badge', u.activo ? 'badge-success' : 'badge-muted']}>
+                {u.activo ? 'Activo' : 'Inactivo'}
+              </span>
+            </td>
+            <td style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm"
+                onclick={`openEdit(${JSON.stringify(u)})`}>
+                <span class="material-icons-round" style="font-size:16px">edit</span>
+              </button>
+              <form method="POST" onsubmit="return confirm('¿Eliminar esta unidad?')">
+                <input type="hidden" name="accion" value="eliminar" />
+                <input type="hidden" name="id" value={u.id} />
+                <button type="submit" class="btn btn-danger btn-sm">
+                  <span class="material-icons-round" style="font-size:16px">delete</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal Crear -->
+  <dialog id="modalCrear" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Nueva Unidad de Medida</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="crear" />
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" class="form-control" placeholder="ej: Kilogramo" required />
+        </div>
+        <div class="form-group">
+          <label>Símbolo</label>
+          <input type="text" name="simbolo" class="form-control" placeholder="ej: kg" required />
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select name="tipo" class="form-control">
+            {tipos.map(t => <option value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalCrear').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Modal Editar -->
+  <dialog id="modalEditar" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Editar Unidad</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="editar" />
+        <input type="hidden" name="id" id="editId" />
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" id="editNombre" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Símbolo</label>
+          <input type="text" name="simbolo" id="editSimbolo" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select name="tipo" id="editTipo" class="form-control">
+            {tipos.map(t => <option value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="activo" value="1" id="editActivo" />
+            Activo
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditar').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; }
+  .modal { border:none; border-radius:var(--radius); padding:0; box-shadow:0 8px 32px rgba(0,0,0,.2); max-width:480px; width:100%; }
+  .modal::backdrop { background:rgba(0,0,0,.4); }
+  .modal-box { padding:24px; }
+  .modal-title { font-size:1.1rem; font-weight:700; margin:0 0 20px; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+  .badge-muted { background:#f1f5f9; color:#64748b; }
+</style>
+
+<script>
+  function openEdit(u) {
+    document.getElementById('editId').value = u.id;
+    document.getElementById('editNombre').value = u.nombre;
+    document.getElementById('editSimbolo').value = u.simbolo;
+    document.getElementById('editTipo').value = u.tipo ?? 'unidad';
+    document.getElementById('editActivo').checked = u.activo;
+    document.getElementById('modalEditar').showModal();
+  }
+</script>

@@ -23,8 +23,15 @@ if (Astro.request.method === 'POST') {
       if (items.length === 0) {
         error = 'Agregue al menos un producto.';
       } else {
+        const impuestoId = formData.get('impuestoId')?.toString() ?? '';
+        let impuestoPorcentaje = 16;
+        let impuestoNombre = 'IVA';
+        if (impuestoId) {
+          const imp = (await store.getImpuestos()).find(i => String(i.id) === impuestoId);
+          if (imp) { impuestoPorcentaje = imp.porcentaje; impuestoNombre = imp.nombre; }
+        }
         const subtotal = items.reduce((sum: number, i: { subtotal: number }) => sum + i.subtotal, 0);
-        const iva = subtotal * 0.16;
+        const iva = subtotal * (impuestoPorcentaje / 100);
         const total = subtotal + iva;
 
         await store.createCompra({
@@ -36,6 +43,9 @@ if (Astro.request.method === 'POST') {
           iva,
           total,
           fecha: new Date().toISOString().split('T')[0],
+          impuestoId: impuestoId || undefined,
+          impuestoNombre,
+          impuestoPorcentaje,
         });
 
         return Astro.redirect('/compras');
@@ -44,11 +54,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [almacenes, allProductos] = await Promise.all([
+const [almacenes, allProductos, impuestos, impuestoDefault] = await Promise.all([
   store.getAlmacenes(),
   store.getProductos(),
+  store.getImpuestos(),
+  store.getImpuestoDefault(),
 ]);
 const productos = allProductos.filter(p => p.activo);
+const moneda = Astro.locals.moneda ?? { simbolo: '$' };
 ---
 
 <AdminLayout title="Nueva Compra">
@@ -66,7 +79,7 @@ const productos = allProductos.filter(p => p.activo);
 
     <div class="card" style="margin-bottom:16px">
       <h2 style="font-size:1.1rem;margin-bottom:16px">Datos de la Compra</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
         <div class="form-group">
           <label>Proveedor</label>
           <input type="text" name="proveedorNombre" class="form-control" placeholder="Nombre del proveedor" required />
@@ -77,6 +90,21 @@ const productos = allProductos.filter(p => p.activo);
             <option value="">Seleccionar almacén...</option>
             {almacenes.filter(a => a.activo).map(a => (
               <option value={a.id}>{a.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Impuesto</label>
+          <select name="impuestoId" id="impuestoSelect" class="form-control"
+            onchange="updateImpuesto(this.value)">
+            <option value="">Sin impuesto (0%)</option>
+            {impuestos.filter(i => i.activo).map(i => (
+              <option value={i.id}
+                data-pct={i.porcentaje}
+                data-nombre={i.nombre}
+                selected={String(i.id) === String(impuestoDefault?.id)}>
+                {i.nombre} ({i.porcentaje}%)
+              </option>
             ))}
           </select>
         </div>
@@ -133,11 +161,11 @@ const productos = allProductos.filter(p => p.activo);
       <div class="totals">
         <div class="total-row">
           <span>Subtotal:</span>
-          <span id="subtotalDisplay">$0.00</span>
+          <span id="subtotalDisplay">{moneda.simbolo}0.00</span>
         </div>
         <div class="total-row">
-          <span>IVA (16%):</span>
-          <span id="ivaDisplay">$0.00</span>
+          <span id="ivaLabel">Impuesto ({impuestoDefault ? impuestoDefault.porcentaje + '%' : '0%'}):</span>
+          <span id="ivaDisplay">{moneda.simbolo}0.00</span>
         </div>
         <div class="total-row total-final">
           <span>Total:</span>
@@ -163,6 +191,29 @@ const productos = allProductos.filter(p => p.activo);
 
 <script is:inline>
   let items = [];
+  var __impuestoPct = 0;
+  var __m = window.__moneda || { simbolo: '$' };
+
+  (function() {
+    var sel = document.getElementById('impuestoSelect');
+    if (sel && sel.value) {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+    }
+  })();
+
+  function updateImpuesto(id) {
+    var sel = document.getElementById('impuestoSelect');
+    if (!id) {
+      __impuestoPct = 0;
+      document.getElementById('ivaLabel').textContent = 'Impuesto (0%):';
+    } else {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+      document.getElementById('ivaLabel').textContent = opt.dataset.nombre + ' (' + __impuestoPct + '%):';
+    }
+    renderItems();
+  }
 
   document.getElementById('selProducto').addEventListener('change', function() {
     const opt = this.options[this.selectedIndex];
@@ -207,7 +258,7 @@ const productos = allProductos.filter(p => p.activo);
 
   function renderItems() {
     const tbody = document.getElementById('itemsBody');
-    const fmt = (n) => '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+    const fmt = (n) => __m.simbolo + n.toLocaleString('es-MX', { minimumFractionDigits: 2 });
 
     if (items.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No se han agregado productos.</td></tr>';
@@ -228,7 +279,7 @@ const productos = allProductos.filter(p => p.activo);
     }
 
     const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-    const iva = subtotal * 0.16;
+    const iva = subtotal * (__impuestoPct / 100);
     const total = subtotal + iva;
 
     document.getElementById('subtotalDisplay').textContent = fmt(subtotal);

@@ -7,6 +7,7 @@ interface Props {
 
 const { title } = Astro.props;
 const user = Astro.locals.user;
+const moneda = Astro.locals.moneda ?? { simbolo: '$', codigo: 'MXN', nombre: 'Peso Mexicano' };
 const currentPath = Astro.url.pathname;
 
 const menuItems = [
@@ -46,11 +47,14 @@ const reportesItems = [
 ];
 
 const configItems = [
-  { href: '/configuracion/empresa',   label: 'Empresa',   icon: 'business' },
-  { href: '/configuracion/impresora', label: 'Impresora', icon: 'print' },
-  { href: '/configuracion/usuarios',  label: 'Usuarios',  icon: 'manage_accounts' },
-  { href: '/configuracion/roles',     label: 'Roles',     icon: 'admin_panel_settings' },
-  { href: '/configuracion/permisos',  label: 'Permisos',  icon: 'lock' },
+  { href: '/configuracion/empresa',   label: 'Empresa',           icon: 'business' },
+  { href: '/configuracion/monedas',   label: 'Monedas',           icon: 'currency_exchange' },
+  { href: '/configuracion/impuestos', label: 'Impuestos',         icon: 'percent' },
+  { href: '/configuracion/unidades',  label: 'Unidades de Medida',icon: 'straighten' },
+  { href: '/configuracion/impresora', label: 'Impresora',         icon: 'print' },
+  { href: '/configuracion/usuarios',  label: 'Usuarios',          icon: 'manage_accounts' },
+  { href: '/configuracion/roles',     label: 'Roles',             icon: 'admin_panel_settings' },
+  { href: '/configuracion/permisos',  label: 'Permisos',          icon: 'lock' },
 ];
 ---
 
@@ -60,6 +64,7 @@ const configItems = [
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title} - Admin Portal</title>
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+  <script is:inline set:html={`window.__moneda=${JSON.stringify(moneda)};`}></script>
 </head>
 <body>
   <!-- Sidebar -->

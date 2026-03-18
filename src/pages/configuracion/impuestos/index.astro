@@ -1,0 +1,225 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+let error = '';
+let success = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const accion = fd.get('accion')?.toString() ?? '';
+
+  if (accion === 'crear') {
+    const nombre = fd.get('nombre')?.toString().trim() ?? '';
+    const porcentaje = parseFloat(fd.get('porcentaje')?.toString() ?? '0');
+    const aplicaA = fd.get('aplicaA')?.toString() ?? 'todos';
+    const esPorDefecto = fd.get('esPorDefecto') === '1';
+    if (!nombre || isNaN(porcentaje)) {
+      error = 'Nombre y porcentaje son requeridos.';
+    } else {
+      try {
+        await store.createImpuesto({ nombre, porcentaje, aplicaA, esPorDefecto });
+        success = 'Impuesto creado correctamente.';
+      } catch {
+        error = 'Error al crear el impuesto.';
+      }
+    }
+  }
+
+  if (accion === 'editar') {
+    const id = fd.get('id')?.toString() ?? '';
+    const nombre = fd.get('nombre')?.toString().trim() ?? '';
+    const porcentaje = parseFloat(fd.get('porcentaje')?.toString() ?? '0');
+    const aplicaA = fd.get('aplicaA')?.toString() ?? 'todos';
+    const esPorDefecto = fd.get('esPorDefecto') === '1';
+    const activo = fd.get('activo') === '1';
+    if (!nombre || isNaN(porcentaje)) {
+      error = 'Nombre y porcentaje son requeridos.';
+    } else {
+      try {
+        await store.updateImpuesto(id, { nombre, porcentaje, aplicaA, esPorDefecto, activo });
+        success = 'Impuesto actualizado correctamente.';
+      } catch {
+        error = 'Error al actualizar el impuesto.';
+      }
+    }
+  }
+
+  if (accion === 'eliminar') {
+    const id = fd.get('id')?.toString() ?? '';
+    try {
+      await store.deleteImpuesto(id);
+      success = 'Impuesto eliminado.';
+    } catch {
+      error = 'No se pudo eliminar el impuesto.';
+    }
+  }
+}
+
+const impuestos = await store.getImpuestos();
+---
+
+<AdminLayout title="Impuestos">
+  <div class="page-header">
+    <h1>Impuestos</h1>
+    <button class="btn btn-primary" onclick="document.getElementById('modalCrear').showModal()">
+      <span class="material-icons-round" style="font-size:18px">add</span> Nuevo Impuesto
+    </button>
+  </div>
+
+  {error   && <div class="alert alert-error"   style="margin-bottom:16px">{error}</div>}
+  {success && <div class="alert alert-success" style="margin-bottom:16px">{success}</div>}
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Porcentaje</th>
+          <th>Aplica a</th>
+          <th>Por defecto</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {impuestos.length === 0 && (
+          <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No hay impuestos registrados.</td></tr>
+        )}
+        {impuestos.map(imp => (
+          <tr>
+            <td><strong>{imp.nombre}</strong></td>
+            <td>{imp.porcentaje}%</td>
+            <td style="color:var(--text-muted);font-size:0.85rem">{imp.aplicaA}</td>
+            <td>
+              {imp.esPorDefecto && (
+                <span class="badge badge-primary">Por defecto</span>
+              )}
+            </td>
+            <td>
+              <span class:list={['badge', imp.activo ? 'badge-success' : 'badge-muted']}>
+                {imp.activo ? 'Activo' : 'Inactivo'}
+              </span>
+            </td>
+            <td style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm"
+                onclick={`openEdit(${JSON.stringify(imp)})`}>
+                <span class="material-icons-round" style="font-size:16px">edit</span>
+              </button>
+              <form method="POST" onsubmit="return confirm('¿Eliminar este impuesto?')">
+                <input type="hidden" name="accion" value="eliminar" />
+                <input type="hidden" name="id" value={imp.id} />
+                <button type="submit" class="btn btn-danger btn-sm">
+                  <span class="material-icons-round" style="font-size:16px">delete</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal Crear -->
+  <dialog id="modalCrear" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Nuevo Impuesto</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="crear" />
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" class="form-control" placeholder="ej: IVA, ISR, ITBMS" required />
+        </div>
+        <div class="form-group">
+          <label>Porcentaje (%)</label>
+          <input type="number" name="porcentaje" class="form-control" min="0" max="100" step="0.01" placeholder="ej: 16" required />
+        </div>
+        <div class="form-group">
+          <label>Aplica a</label>
+          <select name="aplicaA" class="form-control">
+            <option value="todos">Todos (productos y servicios)</option>
+            <option value="productos">Solo productos</option>
+            <option value="servicios">Solo servicios</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="esPorDefecto" value="1" />
+            Usar como impuesto por defecto en documentos nuevos
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalCrear').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Modal Editar -->
+  <dialog id="modalEditar" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Editar Impuesto</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="editar" />
+        <input type="hidden" name="id" id="editId" />
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" id="editNombre" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Porcentaje (%)</label>
+          <input type="number" name="porcentaje" id="editPorcentaje" class="form-control" min="0" max="100" step="0.01" required />
+        </div>
+        <div class="form-group">
+          <label>Aplica a</label>
+          <select name="aplicaA" id="editAplicaA" class="form-control">
+            <option value="todos">Todos (productos y servicios)</option>
+            <option value="productos">Solo productos</option>
+            <option value="servicios">Solo servicios</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="esPorDefecto" value="1" id="editDefault" />
+            Usar como impuesto por defecto
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="activo" value="1" id="editActivo" />
+            Activo
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditar').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; }
+  .modal { border:none; border-radius:var(--radius); padding:0; box-shadow:0 8px 32px rgba(0,0,0,.2); max-width:480px; width:100%; }
+  .modal::backdrop { background:rgba(0,0,0,.4); }
+  .modal-box { padding:24px; }
+  .modal-title { font-size:1.1rem; font-weight:700; margin:0 0 20px; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+  .badge-muted   { background:#f1f5f9; color:#64748b; }
+  .badge-primary { background:#dbeafe; color:#1d4ed8; }
+</style>
+
+<script>
+  function openEdit(imp) {
+    document.getElementById('editId').value = imp.id;
+    document.getElementById('editNombre').value = imp.nombre;
+    document.getElementById('editPorcentaje').value = imp.porcentaje;
+    document.getElementById('editAplicaA').value = imp.aplicaA ?? 'todos';
+    document.getElementById('editDefault').checked = imp.esPorDefecto;
+    document.getElementById('editActivo').checked = imp.activo;
+    document.getElementById('modalEditar').showModal();
+  }
+</script>

@@ -27,6 +27,7 @@ if (Astro.request.method === 'POST') {
     const componenteIds    = fd.getAll('componenteId[]');
     const componenteNombres = fd.getAll('componenteNombre[]');
     const cantidades        = fd.getAll('cantidad[]');
+    const unidadIds         = fd.getAll('unidadId[]');
     const unidades          = fd.getAll('unidad[]');
 
     const componentes = componenteIds
@@ -34,6 +35,7 @@ if (Astro.request.method === 'POST') {
         componenteId:    String(cid),
         componenteNombre: String(componenteNombres[idx] ?? ''),
         cantidad:        parseFloat(String(cantidades[idx] ?? '1')) || 1,
+        unidadId:        String(unidadIds[idx] ?? '') || undefined,
         unidad:          String(unidades[idx] ?? ''),
       }))
       .filter(c => c.componenteId && c.componenteNombre);
@@ -56,6 +58,7 @@ const productoActualizado = await store.getProducto(id!);
 const componentes         = await store.getComponentesProducto(id!);
 const todosProductos      = (await store.getProductos())
   .filter(p => String(p.id) !== String(id)); // excluir el producto padre
+const todasUnidades       = await store.getUnidades();
 ---
 
 <AdminLayout title={`Componentes — ${productoActualizado!.nombre}`}>
@@ -168,7 +171,7 @@ const todosProductos      = (await store.getProductos())
               <tr>
                 <th>Componente / Producto</th>
                 <th style="width:100px">Cantidad</th>
-                <th style="width:90px">Unidad</th>
+                <th style="width:140px">Unidad</th>
                 <th style="width:44px"></th>
               </tr>
             </thead>
@@ -190,7 +193,19 @@ const todosProductos      = (await store.getProductos())
                     <input type="number" name="cantidad[]" class="form-control" value={c.cantidad} min="0.001" step="0.001" style="width:90px" />
                   </td>
                   <td>
-                    <input type="text" name="unidad[]" class="form-control" value={c.unidad ?? ''} placeholder="kg, g, ml…" style="width:80px" />
+                    <select name="unidadId[]" class="form-control comp-unidad-select" style="width:130px">
+                      <option value="">— Sin unidad —</option>
+                      {todasUnidades.filter(u => u.activo).map(u => (
+                        <option value={u.id}
+                          data-simbolo={u.simbolo}
+                          selected={String(u.id) === String(c.unidadId)}>
+                          {u.simbolo} — {u.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <input type="hidden" name="unidad[]" class="comp-unidad-nombre" value={
+                      todasUnidades.find(u => String(u.id) === String(c.unidadId))?.simbolo ?? c.unidad ?? ''
+                    } />
                   </td>
                   <td>
                     <button type="button" class="btn-rm-comp">
@@ -329,10 +344,9 @@ const todosProductos      = (await store.getProductos())
   .btn-rm-comp:hover { background: #fee2e2; }
 </style>
 
-<script define:vars={{ todosProductos }}>
+<script define:vars={{ todosProductos, todasUnidades }}>
   const compBody  = document.getElementById('compBody');
   const compEmpty = document.getElementById('compEmpty');
-  let rowIdx = 0;
 
   function syncEmpty() {
     compEmpty.style.display = compBody.rows.length === 0 ? 'block' : 'none';
@@ -343,26 +357,38 @@ const todosProductos      = (await store.getProductos())
       const opt = this.options[this.selectedIndex];
       row.querySelector('.comp-nombre').value = opt.dataset.nombre ?? '';
     });
+    const unidadSel = row.querySelector('.comp-unidad-select');
+    if (unidadSel) {
+      unidadSel.addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        row.querySelector('.comp-unidad-nombre').value = opt.dataset.simbolo ?? '';
+      });
+    }
     row.querySelector('.btn-rm-comp').addEventListener('click', () => {
       row.remove();
       syncEmpty();
     });
   }
 
-  // Vincular las filas ya renderadas (de componentes existentes)
+  // Vincular las filas ya renderadas
   compBody.querySelectorAll('tr').forEach(tr => attachSelectSync(tr));
 
   document.getElementById('addCompBtn')?.addEventListener('click', () => {
-    const opts = todosProductos.map(p =>
+    const prodOpts = todosProductos.map(p =>
       `<option value="${p.id}" data-nombre="${p.nombre.replace(/"/g, '&quot;')}">${p.nombre}</option>`
     ).join('');
+
+    const unidOpts = todasUnidades
+      .filter(u => u.activo)
+      .map(u => `<option value="${u.id}" data-simbolo="${u.simbolo}">${u.simbolo} — ${u.nombre}</option>`)
+      .join('');
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
         <select name="componenteId[]" class="form-control comp-select">
           <option value="">— Seleccionar —</option>
-          ${opts}
+          ${prodOpts}
         </select>
         <input type="hidden" name="componenteNombre[]" class="comp-nombre" value="">
       </td>
@@ -370,7 +396,11 @@ const todosProductos      = (await store.getProductos())
         <input type="number" name="cantidad[]" class="form-control" value="1" min="0.001" step="0.001" style="width:90px">
       </td>
       <td>
-        <input type="text" name="unidad[]" class="form-control" placeholder="kg, g, ml…" style="width:80px">
+        <select name="unidadId[]" class="form-control comp-unidad-select" style="width:130px">
+          <option value="">— Sin unidad —</option>
+          ${unidOpts}
+        </select>
+        <input type="hidden" name="unidad[]" class="comp-unidad-nombre" value="">
       </td>
       <td>
         <button type="button" class="btn-rm-comp">
@@ -381,6 +411,5 @@ const todosProductos      = (await store.getProductos())
     attachSelectSync(tr);
     compBody.appendChild(tr);
     syncEmpty();
-    rowIdx++;
   });
 </script>

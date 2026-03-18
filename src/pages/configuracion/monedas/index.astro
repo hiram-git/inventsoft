@@ -1,0 +1,242 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+let error = '';
+let success = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const accion = fd.get('accion')?.toString() ?? '';
+
+  if (accion === 'crear') {
+    const codigo  = fd.get('codigo')?.toString().trim().toUpperCase() ?? '';
+    const nombre  = fd.get('nombre')?.toString().trim() ?? '';
+    const simbolo = fd.get('simbolo')?.toString().trim() ?? '';
+    if (!codigo || !nombre || !simbolo) {
+      error = 'Todos los campos son requeridos.';
+    } else {
+      try {
+        await store.createMoneda({ codigo, nombre, simbolo });
+        success = 'Moneda creada correctamente.';
+      } catch {
+        error = 'Error al crear la moneda. El código puede estar duplicado.';
+      }
+    }
+  }
+
+  if (accion === 'editar') {
+    const id      = fd.get('id')?.toString() ?? '';
+    const codigo  = fd.get('codigo')?.toString().trim().toUpperCase() ?? '';
+    const nombre  = fd.get('nombre')?.toString().trim() ?? '';
+    const simbolo = fd.get('simbolo')?.toString().trim() ?? '';
+    const activo  = fd.get('activo') === '1';
+    if (!codigo || !nombre || !simbolo) {
+      error = 'Todos los campos son requeridos.';
+    } else {
+      try {
+        await store.updateMoneda(id, { codigo, nombre, simbolo, activo });
+        success = 'Moneda actualizada correctamente.';
+      } catch {
+        error = 'Error al actualizar la moneda.';
+      }
+    }
+  }
+
+  if (accion === 'usar') {
+    // Set as active currency in empresa config
+    const id = fd.get('id')?.toString() ?? '';
+    const moneda = await store.getMonedas().then(ms => ms.find(m => String(m.id) === id));
+    if (moneda) {
+      try {
+        await store.updateEmpresa({
+          monedaId: Number(id),
+          monedaCodigo: moneda.codigo,
+          monedaNombre: moneda.nombre,
+          monedaSimbolo: moneda.simbolo,
+        });
+        success = `Moneda activa cambiada a ${moneda.nombre} (${moneda.simbolo}).`;
+      } catch {
+        error = 'Error al cambiar la moneda activa.';
+      }
+    }
+  }
+
+  if (accion === 'eliminar') {
+    const id = fd.get('id')?.toString() ?? '';
+    try {
+      await store.deleteMoneda(id);
+      success = 'Moneda eliminada.';
+    } catch {
+      error = 'No se pudo eliminar la moneda.';
+    }
+  }
+}
+
+const [monedas, empresa] = await Promise.all([
+  store.getMonedas(),
+  store.getEmpresa(),
+]);
+
+const monedaActiva = empresa?.monedaCodigo ?? 'MXN';
+---
+
+<AdminLayout title="Monedas">
+  <div class="page-header">
+    <div>
+      <h1>Monedas</h1>
+      <p style="color:var(--text-muted);font-size:0.875rem;margin:4px 0 0">
+        Moneda activa: <strong>{empresa?.monedaSimbolo} {empresa?.monedaNombre} ({monedaActiva})</strong>
+      </p>
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('modalCrear').showModal()">
+      <span class="material-icons-round" style="font-size:18px">add</span> Nueva Moneda
+    </button>
+  </div>
+
+  {error   && <div class="alert alert-error"   style="margin-bottom:16px">{error}</div>}
+  {success && <div class="alert alert-success" style="margin-bottom:16px">{success}</div>}
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Símbolo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {monedas.length === 0 && (
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No hay monedas registradas.</td></tr>
+        )}
+        {monedas.map(m => (
+          <tr class:list={[{ 'row-active': m.codigo === monedaActiva }]}>
+            <td>
+              <strong>{m.codigo}</strong>
+              {m.codigo === monedaActiva && (
+                <span class="badge badge-primary" style="margin-left:8px">Activa</span>
+              )}
+            </td>
+            <td>{m.nombre}</td>
+            <td style="font-size:1.1rem;font-weight:700">{m.simbolo}</td>
+            <td>
+              <span class:list={['badge', m.activo ? 'badge-success' : 'badge-muted']}>
+                {m.activo ? 'Activa' : 'Inactiva'}
+              </span>
+            </td>
+            <td style="display:flex;gap:8px;align-items:center">
+              {m.codigo !== monedaActiva && (
+                <form method="POST">
+                  <input type="hidden" name="accion" value="usar" />
+                  <input type="hidden" name="id" value={m.id} />
+                  <button type="submit" class="btn btn-secondary btn-sm" title="Usar como moneda activa">
+                    <span class="material-icons-round" style="font-size:16px">check_circle</span>
+                    Usar
+                  </button>
+                </form>
+              )}
+              <button class="btn btn-secondary btn-sm"
+                onclick={`openEdit(${JSON.stringify(m)})`}>
+                <span class="material-icons-round" style="font-size:16px">edit</span>
+              </button>
+              <form method="POST" onsubmit="return confirm('¿Eliminar esta moneda?')">
+                <input type="hidden" name="accion" value="eliminar" />
+                <input type="hidden" name="id" value={m.id} />
+                <button type="submit" class="btn btn-danger btn-sm">
+                  <span class="material-icons-round" style="font-size:16px">delete</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal Crear -->
+  <dialog id="modalCrear" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Nueva Moneda</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="crear" />
+        <div class="form-group">
+          <label>Código ISO 4217</label>
+          <input type="text" name="codigo" class="form-control" placeholder="ej: MXN, USD, EUR, PEN" maxlength="10" required />
+          <small style="color:var(--text-muted)">Código de 3 letras: MXN, USD, EUR, COP, PEN, GTQ…</small>
+        </div>
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" class="form-control" placeholder="ej: Peso Mexicano" required />
+        </div>
+        <div class="form-group">
+          <label>Símbolo</label>
+          <input type="text" name="simbolo" class="form-control" placeholder="ej: $" maxlength="10" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalCrear').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Modal Editar -->
+  <dialog id="modalEditar" class="modal">
+    <div class="modal-box">
+      <h3 class="modal-title">Editar Moneda</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="editar" />
+        <input type="hidden" name="id" id="editId" />
+        <div class="form-group">
+          <label>Código ISO 4217</label>
+          <input type="text" name="codigo" id="editCodigo" class="form-control" maxlength="10" required />
+        </div>
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" id="editNombre" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Símbolo</label>
+          <input type="text" name="simbolo" id="editSimbolo" class="form-control" maxlength="10" required />
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="activo" value="1" id="editActivo" />
+            Activa
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditar').close()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; }
+  .modal { border:none; border-radius:var(--radius); padding:0; box-shadow:0 8px 32px rgba(0,0,0,.2); max-width:480px; width:100%; }
+  .modal::backdrop { background:rgba(0,0,0,.4); }
+  .modal-box { padding:24px; }
+  .modal-title { font-size:1.1rem; font-weight:700; margin:0 0 20px; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+  .badge-muted   { background:#f1f5f9; color:#64748b; }
+  .badge-primary { background:#dbeafe; color:#1d4ed8; }
+  .row-active { background:#f0f7ff; }
+</style>
+
+<script>
+  function openEdit(m) {
+    document.getElementById('editId').value = m.id;
+    document.getElementById('editCodigo').value = m.codigo;
+    document.getElementById('editNombre').value = m.nombre;
+    document.getElementById('editSimbolo').value = m.simbolo;
+    document.getElementById('editActivo').checked = m.activo;
+    document.getElementById('modalEditar').showModal();
+  }
+</script>

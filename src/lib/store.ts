@@ -27,6 +27,9 @@ export type TipoCliente = typeof schema.tiposCliente.$inferSelect;
 export type Vendedor = typeof schema.vendedores.$inferSelect;
 export type ComponenteProducto = typeof schema.componentesProducto.$inferSelect;
 export type Comanda = typeof schema.comandas.$inferSelect;
+export type Unidad = typeof schema.unidades.$inferSelect;
+export type Impuesto = typeof schema.impuestos.$inferSelect;
+export type Moneda = typeof schema.monedas.$inferSelect;
 
 // Helper: numeric columns come back as strings from pg, convert to number
 function num(v: string | number | null): number {
@@ -165,8 +168,21 @@ function normalizeComponente(row: ComponenteProducto) {
     id: String(row.id),
     productoId: String(row.productoId),
     componenteId: String(row.componenteId),
+    unidadId: row.unidadId ? String(row.unidadId) : null,
     cantidad: num(row.cantidad),
   };
+}
+
+function normalizeImpuesto(row: Impuesto) {
+  return { ...row, id: String(row.id), porcentaje: num(row.porcentaje) };
+}
+
+function normalizeUnidad(row: Unidad) {
+  return { ...row, id: String(row.id) };
+}
+
+function normalizeMoneda(row: Moneda) {
+  return { ...row, id: String(row.id) };
 }
 
 function normalizeComanda(row: Comanda) {
@@ -398,6 +414,9 @@ export const store = {
     estado: string;
     fecha: string;
     fechaVencimiento?: string;
+    impuestoId?: string;
+    impuestoNombre?: string;
+    impuestoPorcentaje?: number;
   }) {
     const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.facturas);
     const count = Number(countResult[0].count);
@@ -411,6 +430,9 @@ export const store = {
       almacenNombre: data.almacenNombre ?? '',
       items: data.items,
       subtotal: String(data.subtotal),
+      impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
+      impuestoNombre: data.impuestoNombre ?? 'IVA',
+      impuestoPorcentaje: String(data.impuestoPorcentaje ?? 16),
       iva: String(data.iva),
       total: String(data.total),
       estado: data.estado,
@@ -677,6 +699,9 @@ export const store = {
     iva: number;
     total: number;
     fecha: string;
+    impuestoId?: string;
+    impuestoNombre?: string;
+    impuestoPorcentaje?: number;
   }) {
     const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.compras);
     const count = Number(countResult[0].count);
@@ -689,6 +714,9 @@ export const store = {
       almacenNombre: data.almacenNombre,
       items: data.items,
       subtotal: String(data.subtotal),
+      impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
+      impuestoNombre: data.impuestoNombre ?? 'IVA',
+      impuestoPorcentaje: String(data.impuestoPorcentaje ?? 16),
       iva: String(data.iva),
       total: String(data.total),
       estado: 'borrador',
@@ -757,6 +785,9 @@ export const store = {
     total: number;
     notas: string;
     fecha: string;
+    impuestoId?: string;
+    impuestoNombre?: string;
+    impuestoPorcentaje?: number;
   }) {
     const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.pedidos);
     const count = Number(countResult[0].count);
@@ -770,6 +801,9 @@ export const store = {
       almacenNombre: data.almacenNombre,
       items: data.items,
       subtotal: String(data.subtotal),
+      impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
+      impuestoNombre: data.impuestoNombre ?? 'IVA',
+      impuestoPorcentaje: String(data.impuestoPorcentaje ?? 16),
       iva: String(data.iva),
       total: String(data.total),
       estado: 'borrador',
@@ -1179,6 +1213,9 @@ export const store = {
     notas?: string;
     fechaVencimiento?: string;
     fecha: string;
+    impuestoId?: string;
+    impuestoNombre?: string;
+    impuestoPorcentaje?: number;
   }) {
     const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.cotizaciones);
     const count = Number(countResult[0].count);
@@ -1190,6 +1227,9 @@ export const store = {
       clienteNombre: data.clienteNombre,
       items: data.items,
       subtotal: String(data.subtotal),
+      impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
+      impuestoNombre: data.impuestoNombre ?? 'IVA',
+      impuestoPorcentaje: String(data.impuestoPorcentaje ?? 16),
       iva: String(data.iva),
       total: String(data.total),
       estado: 'borrador',
@@ -1340,7 +1380,7 @@ export const store = {
 
   async setComponentesProducto(
     productoId: string,
-    componentes: { componenteId: string; componenteNombre: string; cantidad: number; unidad?: string }[]
+    componentes: { componenteId: string; componenteNombre: string; cantidad: number; unidad?: string; unidadId?: string }[]
   ) {
     // Reemplazar todos los componentes del producto
     await db.delete(schema.componentesProducto)
@@ -1352,6 +1392,7 @@ export const store = {
         componenteId: Number(c.componenteId),
         componenteNombre: c.componenteNombre,
         cantidad: String(c.cantidad),
+        unidadId: c.unidadId ? Number(c.unidadId) : null,
         unidad: c.unidad ?? '',
       }))
     ).returning();
@@ -1468,5 +1509,88 @@ export const store = {
       resultado.push({ mes, año, label, facturado, cobrado });
     }
     return resultado;
+  },
+
+  // ── Unidades de Medida ────────────────────────────────────────────────────
+  async getUnidades() {
+    const rows = await db.select().from(schema.unidades).orderBy(schema.unidades.tipo, schema.unidades.nombre);
+    return rows.map(normalizeUnidad);
+  },
+
+  async createUnidad(data: { nombre: string; simbolo: string; tipo?: string; activo?: boolean }) {
+    const rows = await db.insert(schema.unidades).values({ ...data, activo: data.activo ?? true }).returning();
+    return normalizeUnidad(rows[0]);
+  },
+
+  async updateUnidad(id: string, data: Partial<{ nombre: string; simbolo: string; tipo: string; activo: boolean }>) {
+    const rows = await db.update(schema.unidades).set(data).where(eq(schema.unidades.id, Number(id))).returning();
+    return rows[0] ? normalizeUnidad(rows[0]) : null;
+  },
+
+  async deleteUnidad(id: string) {
+    const rows = await db.delete(schema.unidades).where(eq(schema.unidades.id, Number(id))).returning();
+    return rows.length > 0;
+  },
+
+  // ── Impuestos ─────────────────────────────────────────────────────────────
+  async getImpuestos() {
+    const rows = await db.select().from(schema.impuestos).orderBy(schema.impuestos.nombre);
+    return rows.map(normalizeImpuesto);
+  },
+
+  async getImpuestoDefault() {
+    const rows = await db.select().from(schema.impuestos)
+      .where(and(eq(schema.impuestos.esPorDefecto, true), eq(schema.impuestos.activo, true)));
+    return rows[0] ? normalizeImpuesto(rows[0]) : null;
+  },
+
+  async createImpuesto(data: { nombre: string; porcentaje: number; aplicaA?: string; esPorDefecto?: boolean; activo?: boolean }) {
+    if (data.esPorDefecto) {
+      await db.update(schema.impuestos).set({ esPorDefecto: false });
+    }
+    const rows = await db.insert(schema.impuestos).values({
+      nombre: data.nombre,
+      porcentaje: String(data.porcentaje),
+      aplicaA: data.aplicaA ?? 'todos',
+      esPorDefecto: data.esPorDefecto ?? false,
+      activo: data.activo ?? true,
+    }).returning();
+    return normalizeImpuesto(rows[0]);
+  },
+
+  async updateImpuesto(id: string, data: Partial<{ nombre: string; porcentaje: number; aplicaA: string; esPorDefecto: boolean; activo: boolean }>) {
+    if (data.esPorDefecto) {
+      await db.update(schema.impuestos).set({ esPorDefecto: false });
+    }
+    const values: Record<string, unknown> = { ...data };
+    if (typeof values.porcentaje === 'number') values.porcentaje = String(values.porcentaje);
+    const rows = await db.update(schema.impuestos).set(values).where(eq(schema.impuestos.id, Number(id))).returning();
+    return rows[0] ? normalizeImpuesto(rows[0]) : null;
+  },
+
+  async deleteImpuesto(id: string) {
+    const rows = await db.delete(schema.impuestos).where(eq(schema.impuestos.id, Number(id))).returning();
+    return rows.length > 0;
+  },
+
+  // ── Monedas ───────────────────────────────────────────────────────────────
+  async getMonedas() {
+    const rows = await db.select().from(schema.monedas).orderBy(schema.monedas.codigo);
+    return rows.map(normalizeMoneda);
+  },
+
+  async createMoneda(data: { codigo: string; nombre: string; simbolo: string; activo?: boolean }) {
+    const rows = await db.insert(schema.monedas).values({ ...data, activo: data.activo ?? true }).returning();
+    return normalizeMoneda(rows[0]);
+  },
+
+  async updateMoneda(id: string, data: Partial<{ codigo: string; nombre: string; simbolo: string; activo: boolean }>) {
+    const rows = await db.update(schema.monedas).set(data).where(eq(schema.monedas.id, Number(id))).returning();
+    return rows[0] ? normalizeMoneda(rows[0]) : null;
+  },
+
+  async deleteMoneda(id: string) {
+    const rows = await db.delete(schema.monedas).where(eq(schema.monedas.id, Number(id))).returning();
+    return rows.length > 0;
   },
 };

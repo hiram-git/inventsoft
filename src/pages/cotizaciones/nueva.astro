@@ -19,8 +19,15 @@ if (Astro.request.method === 'POST') {
     if (items.length === 0) {
       error = 'Agregue al menos un producto o servicio.';
     } else {
+      const impuestoId = formData.get('impuestoId')?.toString() ?? '';
+      let impuestoPorcentaje = 16;
+      let impuestoNombre = 'IVA';
+      if (impuestoId) {
+        const imp = (await store.getImpuestos()).find(i => String(i.id) === impuestoId);
+        if (imp) { impuestoPorcentaje = imp.porcentaje; impuestoNombre = imp.nombre; }
+      }
       const subtotal = items.reduce((sum: number, item: { subtotal: number }) => sum + item.subtotal, 0);
-      const iva = subtotal * 0.16;
+      const iva = subtotal * (impuestoPorcentaje / 100);
       const total = subtotal + iva;
 
       const cot = await store.createCotizacion({
@@ -33,6 +40,9 @@ if (Astro.request.method === 'POST') {
         notas: formData.get('notas')?.toString() ?? '',
         fechaVencimiento: formData.get('fechaVencimiento')?.toString() || undefined,
         fecha: new Date().toISOString().split('T')[0],
+        impuestoId: impuestoId || undefined,
+        impuestoNombre,
+        impuestoPorcentaje,
       });
 
       return Astro.redirect(`/cotizaciones/${cot.id}`);
@@ -40,13 +50,16 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [clientes, allProductos, allServicios] = await Promise.all([
+const [clientes, allProductos, allServicios, impuestos, impuestoDefault] = await Promise.all([
   store.getClientes(),
   store.getProductos(),
   store.getServicios(),
+  store.getImpuestos(),
+  store.getImpuestoDefault(),
 ]);
 const productos = allProductos.filter(p => p.activo);
 const servicios = allServicios.filter(s => s.activo);
+const moneda = Astro.locals.moneda ?? { simbolo: '$' };
 
 const allItems = [
   ...productos.map(p => ({ tipo: 'producto', id: String(p.id), nombre: p.nombre, precio: p.precio, esKit: p.tipoProducto === 'kit', esReceta: p.tipoProducto === 'compuesto' })),
@@ -74,7 +87,7 @@ const allItems = [
 
     <div class="card" style="margin-bottom:16px">
       <h2 style="font-size:1.1rem;margin-bottom:16px">Datos de la Cotización</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px">
         <div class="form-group">
           <label>Cliente *</label>
           <select name="clienteId" class="form-control" required>
@@ -92,6 +105,21 @@ const allItems = [
         <div class="form-group">
           <label>Notas / Condiciones</label>
           <input type="text" name="notas" class="form-control" placeholder="Condiciones de pago, entrega, etc." />
+        </div>
+        <div class="form-group">
+          <label>Impuesto</label>
+          <select name="impuestoId" id="impuestoSelect" class="form-control"
+            onchange="updateImpuesto(this.value)">
+            <option value="">Sin impuesto (0%)</option>
+            {impuestos.filter(i => i.activo).map(i => (
+              <option value={i.id}
+                data-pct={i.porcentaje}
+                data-nombre={i.nombre}
+                selected={String(i.id) === String(impuestoDefault?.id)}>
+                {i.nombre} ({i.porcentaje}%)
+              </option>
+            ))}
+          </select>
         </div>
       </div>
     </div>
@@ -146,9 +174,9 @@ const allItems = [
 
     <div class="card">
       <div class="totals">
-        <div class="total-row"><span>Subtotal:</span><span id="subtotalDisplay">$0.00</span></div>
-        <div class="total-row"><span>IVA (16%):</span><span id="ivaDisplay">$0.00</span></div>
-        <div class="total-row total-final"><span>Total:</span><span id="totalDisplay">$0.00</span></div>
+        <div class="total-row"><span>Subtotal:</span><span id="subtotalDisplay">{moneda.simbolo}0.00</span></div>
+        <div class="total-row"><span id="ivaLabel">Impuesto ({impuestoDefault ? impuestoDefault.porcentaje + '%' : '0%'}):</span><span id="ivaDisplay">{moneda.simbolo}0.00</span></div>
+        <div class="total-row total-final"><span>Total:</span><span id="totalDisplay">{moneda.simbolo}0.00</span></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
         <a href="/cotizaciones" class="btn btn-secondary">Cancelar</a>
@@ -211,8 +239,31 @@ const allItems = [
   var __allItems = window.__cotItems || [];
   var selectedItem = null;
   var items = [];
+  var __impuestoPct = 0;
+  var __m = window.__moneda || { simbolo: '$' };
 
-  function fmt(n) { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
+  (function() {
+    var sel = document.getElementById('impuestoSelect');
+    if (sel && sel.value) {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+    }
+  })();
+
+  function updateImpuesto(id) {
+    var sel = document.getElementById('impuestoSelect');
+    if (!id) {
+      __impuestoPct = 0;
+      document.getElementById('ivaLabel').textContent = 'Impuesto (0%):';
+    } else {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+      document.getElementById('ivaLabel').textContent = opt.dataset.nombre + ' (' + __impuestoPct + '%):';
+    }
+    renderItems();
+  }
+
+  function fmt(n) { return __m.simbolo + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -299,7 +350,7 @@ const allItems = [
       }).join('');
     }
     var subtotal = items.reduce(function(s, i) { return s + i.subtotal; }, 0);
-    var iva = subtotal * 0.16;
+    var iva = subtotal * (__impuestoPct / 100);
     var total = subtotal + iva;
     document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
     document.getElementById('ivaDisplay').textContent = fmt(iva);
