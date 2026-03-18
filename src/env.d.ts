@@ -8,5 +8,10 @@ declare namespace App {
       email: string;
       rol: string;
     };
+    moneda: {
+      simbolo: string;
+      codigo: string;
+      nombre: string;
+    };
   }
 }

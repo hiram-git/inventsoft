@@ -27,8 +27,15 @@ if (Astro.request.method === 'POST') {
     if (items.length === 0) {
       error = 'Agregue al menos un producto al pedido.';
     } else {
+      const impuestoId = formData.get('impuestoId')?.toString() ?? '';
+      let impuestoPorcentaje = 16;
+      let impuestoNombre = 'IVA';
+      if (impuestoId) {
+        const imp = (await store.getImpuestos()).find(i => String(i.id) === impuestoId);
+        if (imp) { impuestoPorcentaje = imp.porcentaje; impuestoNombre = imp.nombre; }
+      }
       const subtotal = items.reduce((sum: number, i: { subtotal: number }) => sum + i.subtotal, 0);
-      const iva = subtotal * 0.16;
+      const iva = subtotal * (impuestoPorcentaje / 100);
       const total = subtotal + iva;
 
       await store.createPedido({
@@ -42,6 +49,9 @@ if (Astro.request.method === 'POST') {
         total,
         notas,
         fecha: new Date().toISOString().split('T')[0],
+        impuestoId: impuestoId || undefined,
+        impuestoNombre,
+        impuestoPorcentaje,
       });
 
       return Astro.redirect('/pedidos');
@@ -49,12 +59,15 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [clientes, almacenes, allProductos] = await Promise.all([
+const [clientes, almacenes, allProductos, impuestos, impuestoDefault] = await Promise.all([
   store.getClientes(),
   store.getAlmacenes(),
   store.getProductos(),
+  store.getImpuestos(),
+  store.getImpuestoDefault(),
 ]);
 const productos = allProductos.filter(p => p.activo);
+const moneda = Astro.locals.moneda ?? { simbolo: '$' };
 
 const allItems = productos.map(p => ({
   id: String(p.id),
@@ -83,7 +96,7 @@ const allItems = productos.map(p => ({
 
     <div class="card" style="margin-bottom:16px">
       <h2 style="font-size:1.1rem;margin-bottom:16px">Datos del Pedido</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
         <div class="form-group">
           <label>Cliente</label>
           <select name="clienteId" class="form-control" required>
@@ -99,6 +112,21 @@ const allItems = productos.map(p => ({
             <option value="">Seleccionar almacén...</option>
             {almacenes.filter(a => a.activo).map(a => (
               <option value={a.id}>{a.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Impuesto</label>
+          <select name="impuestoId" id="impuestoSelect" class="form-control"
+            onchange="updateImpuesto(this.value)">
+            <option value="">Sin impuesto (0%)</option>
+            {impuestos.filter(i => i.activo).map(i => (
+              <option value={i.id}
+                data-pct={i.porcentaje}
+                data-nombre={i.nombre}
+                selected={String(i.id) === String(impuestoDefault?.id)}>
+                {i.nombre} ({i.porcentaje}%)
+              </option>
             ))}
           </select>
         </div>
@@ -165,11 +193,11 @@ const allItems = productos.map(p => ({
       <div class="totals">
         <div class="total-row">
           <span>Subtotal:</span>
-          <span id="subtotalDisplay">$0.00</span>
+          <span id="subtotalDisplay">{moneda.simbolo}0.00</span>
         </div>
         <div class="total-row">
-          <span>IVA (16%):</span>
-          <span id="ivaDisplay">$0.00</span>
+          <span id="ivaLabel">Impuesto ({impuestoDefault ? impuestoDefault.porcentaje + '%' : '0%'}):</span>
+          <span id="ivaDisplay">{moneda.simbolo}0.00</span>
         </div>
         <div class="total-row total-final">
           <span>Total:</span>
@@ -216,8 +244,31 @@ const allItems = productos.map(p => ({
   var __allItems = window.__pedidoItems || [];
   var selectedItem = null;
   var items = [];
+  var __impuestoPct = 0;
+  var __m = window.__moneda || { simbolo: '$' };
 
-  function fmt(n) { return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
+  (function() {
+    var sel = document.getElementById('impuestoSelect');
+    if (sel && sel.value) {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+    }
+  })();
+
+  function updateImpuesto(id) {
+    var sel = document.getElementById('impuestoSelect');
+    if (!id) {
+      __impuestoPct = 0;
+      document.getElementById('ivaLabel').textContent = 'Impuesto (0%):';
+    } else {
+      var opt = sel.options[sel.selectedIndex];
+      __impuestoPct = parseFloat(opt.dataset.pct || '0');
+      document.getElementById('ivaLabel').textContent = opt.dataset.nombre + ' (' + __impuestoPct + '%):';
+    }
+    renderItems();
+  }
+
+  function fmt(n) { return __m.simbolo + n.toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -310,7 +361,7 @@ const allItems = productos.map(p => ({
     }
 
     var subtotal = items.reduce(function(s, i) { return s + i.subtotal; }, 0);
-    var iva = subtotal * 0.16;
+    var iva = subtotal * (__impuestoPct / 100);
     var total = subtotal + iva;
 
     document.getElementById('subtotalDisplay').textContent = fmt(subtotal);

@@ -26,6 +26,34 @@ export const usuarios = pgTable('usuarios', {
   activo: boolean('activo').default(true).notNull(),
 });
 
+// --- Unidades de Medida ---
+export const unidades = pgTable('unidades', {
+  id: serial('id').primaryKey(),
+  nombre: varchar('nombre', { length: 100 }).notNull(),
+  simbolo: varchar('simbolo', { length: 20 }).notNull(),
+  tipo: varchar('tipo', { length: 50 }).default('unidad'), // masa | volumen | longitud | tiempo | unidad | area | otro
+  activo: boolean('activo').default(true).notNull(),
+});
+
+// --- Impuestos ---
+export const impuestos = pgTable('impuestos', {
+  id: serial('id').primaryKey(),
+  nombre: varchar('nombre', { length: 100 }).notNull(),
+  porcentaje: numeric('porcentaje', { precision: 5, scale: 2 }).notNull(),
+  aplicaA: varchar('aplica_a', { length: 20 }).default('todos'), // 'productos' | 'servicios' | 'todos'
+  esPorDefecto: boolean('es_por_defecto').default(false).notNull(),
+  activo: boolean('activo').default(true).notNull(),
+});
+
+// --- Monedas ---
+export const monedas = pgTable('monedas', {
+  id: serial('id').primaryKey(),
+  codigo: varchar('codigo', { length: 10 }).notNull().unique(), // MXN, USD, EUR, PEN…
+  nombre: varchar('nombre', { length: 100 }).notNull(),
+  simbolo: varchar('simbolo', { length: 10 }).notNull(), // $, €, S/…
+  activo: boolean('activo').default(true).notNull(),
+});
+
 // --- Tipos de Cliente (catálogo) ---
 export const tiposCliente = pgTable('tipos_cliente', {
   id: serial('id').primaryKey(),
@@ -197,6 +225,9 @@ export const facturas = pgTable('facturas', {
     subtotal: number;
   }[]>().default([]),
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+  impuestoId: integer('impuesto_id'),
+  impuestoNombre: varchar('impuesto_nombre', { length: 100 }).default('IVA'),
+  impuestoPorcentaje: numeric('impuesto_porcentaje', { precision: 5, scale: 2 }).default('16'),
   iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
   total: numeric('total', { precision: 12, scale: 2 }).notNull(),
   estado: varchar('estado', { length: 20 }).notNull().default('pendiente'), // pendiente | parcial | pagada | cancelada | vencida
@@ -239,6 +270,11 @@ export const empresa = pgTable('empresa', {
   impresoraDispositivo: varchar('impresora_dispositivo', { length: 200 }).default('/dev/usb/lp0'),
   // impresora_ancho: 32 = papel 58mm | 48 = papel 80mm
   impresoraAncho: integer('impresora_ancho').default(32),
+  // Moneda activa
+  monedaId: integer('moneda_id'),
+  monedaCodigo: varchar('moneda_codigo', { length: 10 }).default('MXN'),
+  monedaNombre: varchar('moneda_nombre', { length: 100 }).default('Peso Mexicano'),
+  monedaSimbolo: varchar('moneda_simbolo', { length: 10 }).default('$'),
 });
 
 // --- Almacenes ---
@@ -294,6 +330,9 @@ export const compras = pgTable('compras', {
     subtotal: number;
   }[]>().default([]),
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+  impuestoId: integer('impuesto_id'),
+  impuestoNombre: varchar('impuesto_nombre', { length: 100 }).default('IVA'),
+  impuestoPorcentaje: numeric('impuesto_porcentaje', { precision: 5, scale: 2 }).default('16'),
   iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
   total: numeric('total', { precision: 12, scale: 2 }).notNull(),
   estado: varchar('estado', { length: 20 }).notNull().default('borrador'),
@@ -316,6 +355,9 @@ export const pedidos = pgTable('pedidos', {
     subtotal: number;
   }[]>().default([]),
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+  impuestoId: integer('impuesto_id'),
+  impuestoNombre: varchar('impuesto_nombre', { length: 100 }).default('IVA'),
+  impuestoPorcentaje: numeric('impuesto_porcentaje', { precision: 5, scale: 2 }).default('16'),
   iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
   total: numeric('total', { precision: 12, scale: 2 }).notNull(),
   estado: varchar('estado', { length: 20 }).notNull().default('borrador'),
@@ -364,6 +406,9 @@ export const cotizaciones = pgTable('cotizaciones', {
     subtotal: number;
   }[]>().default([]),
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+  impuestoId: integer('impuesto_id'),
+  impuestoNombre: varchar('impuesto_nombre', { length: 100 }).default('IVA'),
+  impuestoPorcentaje: numeric('impuesto_porcentaje', { precision: 5, scale: 2 }).default('16'),
   iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
   total: numeric('total', { precision: 12, scale: 2 }).notNull(),
   estado: varchar('estado', { length: 20 }).notNull().default('borrador'), // borrador | enviada | aceptada | rechazada | vencida | convertida
@@ -383,6 +428,7 @@ export const componentesProducto = pgTable('componentes_producto', {
   componenteId: integer('componente_id').notNull(),
   componenteNombre: varchar('componente_nombre', { length: 300 }).notNull(),
   cantidad: numeric('cantidad', { precision: 12, scale: 4 }).notNull(),
+  unidadId: integer('unidad_id'),
   unidad: varchar('unidad', { length: 50 }).default(''),
 });
 

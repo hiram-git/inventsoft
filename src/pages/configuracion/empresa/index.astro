@@ -6,17 +6,40 @@ let mensaje = '';
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
-  await store.updateEmpresa({
+  const data: Record<string, unknown> = {
     nombre: formData.get('nombre')?.toString() ?? '',
     rfc: formData.get('rfc')?.toString() ?? '',
     direccion: formData.get('direccion')?.toString() ?? '',
     telefono: formData.get('telefono')?.toString() ?? '',
     email: formData.get('email')?.toString() ?? '',
-  });
+  };
+
+  // Moneda activa
+  const monedaId = formData.get('monedaId')?.toString() ?? '';
+  if (monedaId) {
+    const monedas = await store.getMonedas();
+    const m = monedas.find(x => String(x.id) === monedaId);
+    if (m) {
+      data.monedaId = Number(monedaId);
+      data.monedaCodigo = m.codigo;
+      data.monedaNombre = m.nombre;
+      data.monedaSimbolo = m.simbolo;
+    }
+  } else {
+    data.monedaId = null;
+    data.monedaCodigo = '';
+    data.monedaNombre = '';
+    data.monedaSimbolo = '$';
+  }
+
+  await store.updateEmpresa(data);
   mensaje = 'Datos de la empresa actualizados.';
 }
 
-const empresa = await store.getEmpresa();
+const [empresa, monedas] = await Promise.all([
+  store.getEmpresa(),
+  store.getMonedas(),
+]);
 ---
 
 <AdminLayout title="Datos de Empresa">
@@ -26,30 +49,59 @@ const empresa = await store.getEmpresa();
 
   {mensaje && <div class="alert alert-success">{mensaje}</div>}
 
-  <div class="card" style="max-width:600px">
+  <div class="card" style="max-width:680px">
     <form method="POST">
       <div class="form-group">
         <label>Nombre de la Empresa</label>
-        <input type="text" name="nombre" class="form-control" value={empresa.nombre} required />
+        <input type="text" name="nombre" class="form-control" value={empresa?.nombre ?? ''} required />
       </div>
       <div class="form-group">
         <label>RFC</label>
-        <input type="text" name="rfc" class="form-control" value={empresa.rfc} required />
+        <input type="text" name="rfc" class="form-control" value={empresa?.rfc ?? ''} />
       </div>
       <div class="form-group">
         <label>Dirección</label>
-        <textarea name="direccion" class="form-control" rows="2">{empresa.direccion}</textarea>
+        <textarea name="direccion" class="form-control" rows="2">{empresa?.direccion ?? ''}</textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label>Teléfono</label>
-          <input type="text" name="telefono" class="form-control" value={empresa.telefono} />
+          <input type="text" name="telefono" class="form-control" value={empresa?.telefono ?? ''} />
         </div>
         <div class="form-group">
           <label>Email</label>
-          <input type="email" name="email" class="form-control" value={empresa.email} />
+          <input type="email" name="email" class="form-control" value={empresa?.email ?? ''} />
         </div>
       </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0" />
+      <h3 style="font-size:0.95rem;font-weight:600;margin:0 0 12px;color:var(--text-muted)">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:middle">currency_exchange</span>
+        Moneda
+      </h3>
+
+      <div class="form-group">
+        <label>Moneda activa</label>
+        <select name="monedaId" class="form-control">
+          <option value="">— Sin seleccionar —</option>
+          {monedas.map(m => (
+            <option value={m.id} selected={String(m.id) === String(empresa?.monedaId)}>
+              {m.simbolo} {m.nombre} ({m.codigo})
+            </option>
+          ))}
+        </select>
+        <small style="color:var(--text-muted);font-size:0.78rem">
+          Esta moneda se mostrará en todo el sistema. Gestiona las monedas en
+          <a href="/configuracion/monedas">Configuración → Monedas</a>.
+        </small>
+      </div>
+
+      {empresa?.monedaSimbolo && (
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:var(--radius);padding:10px 14px;font-size:0.875rem;color:#0369a1;margin-bottom:12px">
+          Moneda actual: <strong>{empresa.monedaSimbolo} {empresa.monedaNombre} ({empresa.monedaCodigo})</strong>
+        </div>
+      )}
+
       <div style="display:flex;justify-content:flex-end;margin-top:8px">
         <button type="submit" class="btn btn-primary">
           <span class="material-icons-round" style="font-size:18px">save</span> Guardar Cambios
@@ -58,3 +110,8 @@ const empresa = await store.getEmpresa();
     </form>
   </div>
 </AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; }
+</style>
