@@ -13,7 +13,8 @@
     "dev:flowbite": "npm run dev      --workspace=mobile-flowbite",
     "dev:shadcn":   "npm run dev      --workspace=mobile-shadcn",
     "build:app":    "npm run build    --workspace=app",
-    "db:push":      "npm run db:push  --workspace=app",
+    "db:push":      "npm run db:push   --workspace=app",
+    "db:seed":      "npm run db:seed   --workspace=app",
     "db:studio":    "npm run db:studio --workspace=app"
   }
 }
