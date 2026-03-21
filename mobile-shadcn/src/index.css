@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  /* shadcn/ui design tokens */
+  --color-background: #ffffff;
+  --color-foreground: #18181b;
+  --color-border: #e4e4e7;
+  --color-input: #e4e4e7;
+  --color-ring: #18181b;
+  --color-primary: #18181b;
+  --color-primary-foreground: #fafafa;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+  --radius: 0.5rem;
+}

@@ -2,3 +2,8 @@ node_modules/
 dist/
 .astro/
 .env
+
+# Mobile builds
+mobile-heroui/dist/
+mobile-flowbite/dist/
+mobile-shadcn/dist/
