@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Button, Input, Textarea, Card, CardBody, CardHeader, Divider, Chip } from '@heroui/react';
+import ClienteSearch from '../components/ClienteSearch';
 
 export default function NuevaCotizacion() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [clienteEmail, setClienteEmail] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    // TODO: api.post('/api/v1/cotizaciones', formData)
-    await new Promise(r => setTimeout(r, 800)); // simulación
+    // TODO: api.post('/api/cotizaciones', formData)
+    await new Promise(r => setTimeout(r, 800));
     setLoading(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -29,8 +31,8 @@ export default function NuevaCotizacion() {
             Cliente
           </CardHeader>
           <CardBody className="space-y-3">
-            <Input label="Nombre del cliente" placeholder="Buscar cliente..." isRequired />
-            <Input label="Email" type="email" placeholder="cliente@email.com" />
+            <ClienteSearch onSelect={c => setClienteEmail(c.email)} />
+            <Input label="Email" type="email" placeholder="cliente@email.com" value={clienteEmail} onValueChange={setClienteEmail} />
           </CardBody>
         </Card>
 

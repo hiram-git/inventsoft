@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Card, CardBody, CardHeader, CardSection } from '@/components/ui/card';
+import ClienteSearch from '@/components/ClienteSearch';
 
 export default function NuevaFactura() {
   const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved]     = useState(false);
+  const [rucRfc, setRucRfc]   = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,8 +35,8 @@ export default function NuevaFactura() {
         <Card>
           <CardHeader><CardSection>Cliente</CardSection></CardHeader>
           <CardBody>
-            <div><Label htmlFor="cliente">Nombre del cliente *</Label><Input id="cliente" placeholder="Buscar cliente..." required /></div>
-            <div><Label htmlFor="ruc">RUC / RFC</Label><Input id="ruc" placeholder="Identificación fiscal" /></div>
+            <ClienteSearch onSelect={c => setRucRfc(c.ruc || c.rfc)} />
+            <div className="mt-3"><Label htmlFor="ruc">RUC / RFC</Label><Input id="ruc" placeholder="Identificación fiscal" value={rucRfc} onChange={e => setRucRfc(e.target.value)} /></div>
           </CardBody>
         </Card>
 

@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Button, Label, TextInput, Textarea } from 'flowbite-react';
+import ClienteSearch from '../components/ClienteSearch';
 
 export default function NuevaCotizacion() {
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [clienteEmail, setClienteEmail] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    // TODO: api.post('/api/v1/cotizaciones', formData)
+    // TODO: api.post('/api/cotizaciones', formData)
     await new Promise(r => setTimeout(r, 800));
     setLoading(false);
     setSaved(true);
@@ -30,13 +32,10 @@ export default function NuevaCotizacion() {
         {/* Cliente */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Cliente</p>
-          <div>
-            <Label htmlFor="cliente" value="Nombre del cliente *" />
-            <TextInput id="cliente" placeholder="Buscar cliente..." required />
-          </div>
+          <ClienteSearch onSelect={c => setClienteEmail(c.email)} />
           <div>
             <Label htmlFor="email" value="Email" />
-            <TextInput id="email" type="email" placeholder="cliente@email.com" />
+            <TextInput id="email" type="email" placeholder="cliente@email.com" value={clienteEmail} onChange={e => setClienteEmail(e.target.value)} />
           </div>
         </div>
 

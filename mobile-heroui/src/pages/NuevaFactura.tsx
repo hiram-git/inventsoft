@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Button, Input, Select, SelectItem, Card, CardBody, CardHeader, Divider, Chip } from '@heroui/react';
+import ClienteSearch from '../components/ClienteSearch';
 
 const metodosPago = ['efectivo', 'transferencia', 'tarjeta', 'cheque'];
 
 export default function NuevaFactura() {
   const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [rucRfc, setRucRfc]         = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,8 +33,8 @@ export default function NuevaFactura() {
             Cliente
           </CardHeader>
           <CardBody className="space-y-3">
-            <Input label="Nombre del cliente" placeholder="Buscar cliente..." isRequired />
-            <Input label="RUC / RFC" placeholder="Identificación fiscal" />
+            <ClienteSearch onSelect={c => setRucRfc(c.ruc || c.rfc)} />
+            <Input label="RUC / RFC" placeholder="Identificación fiscal" value={rucRfc} onValueChange={setRucRfc} />
           </CardBody>
         </Card>
 

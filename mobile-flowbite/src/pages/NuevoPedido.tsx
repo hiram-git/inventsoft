@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Button, Label, TextInput, Select } from 'flowbite-react';
+import ClienteSearch from '../components/ClienteSearch';
 
 export default function NuevoPedido() {
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [direccion, setDireccion]   = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,13 +31,10 @@ export default function NuevoPedido() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Cliente</p>
-          <div>
-            <Label htmlFor="cliente" value="Nombre del cliente *" />
-            <TextInput id="cliente" placeholder="Buscar cliente..." required />
-          </div>
+          <ClienteSearch onSelect={c => setDireccion(c.direccion)} />
           <div>
             <Label htmlFor="direccion" value="Dirección de entrega" />
-            <TextInput id="direccion" placeholder="Calle, número, ciudad..." />
+            <TextInput id="direccion" placeholder="Calle, número, ciudad..." value={direccion} onChange={e => setDireccion(e.target.value)} />
           </div>
         </div>
 
