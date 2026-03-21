@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Button, Label, TextInput, Select } from 'flowbite-react';
+import ClienteSearch from '../components/ClienteSearch';
 
 export default function NuevaFactura() {
   const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved]     = useState(false);
+  const [rucRfc, setRucRfc]   = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,13 +31,10 @@ export default function NuevaFactura() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Cliente</p>
-          <div>
-            <Label htmlFor="cliente" value="Nombre del cliente *" />
-            <TextInput id="cliente" placeholder="Buscar cliente..." required />
-          </div>
+          <ClienteSearch onSelect={c => setRucRfc(c.ruc || c.rfc)} />
           <div>
             <Label htmlFor="ruc" value="RUC / RFC" />
-            <TextInput id="ruc" placeholder="Identificación fiscal" />
+            <TextInput id="ruc" placeholder="Identificación fiscal" value={rucRfc} onChange={e => setRucRfc(e.target.value)} />
           </div>
         </div>
 

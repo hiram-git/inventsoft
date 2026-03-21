@@ -3,15 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardBody, CardHeader, CardSection } from '@/components/ui/card';
+import ClienteSearch from '@/components/ClienteSearch';
 
 export default function NuevaCotizacion() {
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [clienteEmail, setClienteEmail] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    // TODO: api.post('/api/v1/cotizaciones', formData)
+    // TODO: api.post('/api/cotizaciones', formData)
     await new Promise(r => setTimeout(r, 800));
     setLoading(false);
     setSaved(true);
@@ -33,8 +35,8 @@ export default function NuevaCotizacion() {
         <Card>
           <CardHeader><CardSection>Cliente</CardSection></CardHeader>
           <CardBody>
-            <div><Label htmlFor="cliente">Nombre del cliente *</Label><Input id="cliente" placeholder="Buscar cliente..." required /></div>
-            <div><Label htmlFor="email">Email</Label><Input id="email" type="email" placeholder="cliente@email.com" /></div>
+            <ClienteSearch onSelect={c => setClienteEmail(c.email)} />
+            <div className="mt-3"><Label htmlFor="email">Email</Label><Input id="email" type="email" placeholder="cliente@email.com" value={clienteEmail} onChange={e => setClienteEmail(e.target.value)} /></div>
           </CardBody>
         </Card>
 

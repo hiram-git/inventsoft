@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Button, Input, Select, SelectItem, Card, CardBody, CardHeader, Chip } from '@heroui/react';
+import ClienteSearch from '../components/ClienteSearch';
 
 const estados = ['pendiente', 'confirmado', 'despachado'];
 
 export default function NuevoPedido() {
-  const [estado, setEstado] = useState('pendiente');
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [estado, setEstado]     = useState('pendiente');
+  const [loading, setLoading]   = useState(false);
+  const [saved, setSaved]       = useState(false);
+  const [direccion, setDireccion] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,8 +33,8 @@ export default function NuevoPedido() {
             Cliente
           </CardHeader>
           <CardBody className="space-y-3">
-            <Input label="Nombre del cliente" placeholder="Buscar cliente..." isRequired />
-            <Input label="Dirección de entrega" placeholder="Calle, número, ciudad..." />
+            <ClienteSearch onSelect={c => setDireccion(c.direccion)} />
+            <Input label="Dirección de entrega" placeholder="Calle, número, ciudad..." value={direccion} onValueChange={setDireccion} />
           </CardBody>
         </Card>
 

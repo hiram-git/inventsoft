@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Card, CardBody, CardHeader, CardSection } from '@/components/ui/card';
+import ClienteSearch from '@/components/ClienteSearch';
 
 export default function NuevoPedido() {
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [direccion, setDireccion]   = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,8 +35,8 @@ export default function NuevoPedido() {
         <Card>
           <CardHeader><CardSection>Cliente</CardSection></CardHeader>
           <CardBody>
-            <div><Label htmlFor="cliente">Nombre del cliente *</Label><Input id="cliente" placeholder="Buscar cliente..." required /></div>
-            <div><Label htmlFor="direccion">Dirección de entrega</Label><Input id="direccion" placeholder="Calle, número, ciudad..." /></div>
+            <ClienteSearch onSelect={c => setDireccion(c.direccion)} />
+            <div className="mt-3"><Label htmlFor="direccion">Dirección de entrega</Label><Input id="direccion" placeholder="Calle, número, ciudad..." value={direccion} onChange={e => setDireccion(e.target.value)} /></div>
           </CardBody>
         </Card>
 

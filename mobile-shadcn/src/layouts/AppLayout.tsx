@@ -1,4 +1,5 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { clearAuth, getUser } from '../api/client';
 
 const nav = [
   { to: '/cotizacion', label: 'Cotización', icon: '📋' },
@@ -7,12 +8,27 @@ const nav = [
 ];
 
 export default function AppLayout() {
+  const navigate = useNavigate();
+  const user = getUser();
+
+  function handleLogout() {
+    clearAuth();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col">
       {/* Header */}
       <header className="bg-zinc-900 text-white px-4 py-3 flex items-center shadow-md">
         <span className="font-bold text-lg">Inventsoft</span>
-        <span className="text-zinc-400 text-sm ml-auto">v shadcn/ui</span>
+        <span className="text-zinc-400 text-sm ml-auto">{user?.nombre ?? ''}</span>
+        <button
+          onClick={handleLogout}
+          className="text-zinc-400 hover:text-white text-sm ml-3 transition-colors"
+          title="Cerrar sesión"
+        >
+          ✕
+        </button>
       </header>
 
       {/* Content */}
