@@ -255,7 +255,9 @@ export const cobros = pgTable('cobros', {
 export const empresa = pgTable('empresa', {
   id: serial('id').primaryKey(),
   nombre: varchar('nombre', { length: 300 }).notNull(),
-  rfc: varchar('rfc', { length: 20 }).default(''),
+  rfc: varchar('rfc', { length: 50 }).default(''),
+  ruc: varchar('ruc', { length: 50 }).default(''),   // RUC / RIF (Panama, Ecuador, Venezuela…)
+  nit: varchar('nit', { length: 50 }).default(''),   // NIT (Colombia, Guatemala…)
   direccion: text('direccion').default(''),
   telefono: varchar('telefono', { length: 50 }).default(''),
   email: varchar('email', { length: 200 }).default(''),

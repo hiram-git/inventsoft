@@ -2,11 +2,23 @@ import { defineMiddleware } from 'astro:middleware';
 import { getSession } from './lib/auth';
 import { verifyToken } from './lib/tokens';
 import { store } from './lib/store';
+import { isSetupComplete } from './lib/setup-check';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
-  // Public routes
+  // Always allow the setup wizard and its API — they run before any DB tables exist
+  if (pathname === '/setup' || pathname.startsWith('/api/setup')) {
+    return next();
+  }
+
+  // Check if initial setup has been completed; if not, redirect to wizard
+  const setupDone = await isSetupComplete();
+  if (!setupDone) {
+    return context.redirect('/setup');
+  }
+
+  // Public routes (login + auth API)
   if (pathname === '/login' || pathname.startsWith('/api/auth')) {
     return next();
   }
