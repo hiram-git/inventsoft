@@ -3,9 +3,13 @@ import { execSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { db } from '../../db';
+import { db, authDb } from '../../db';
 import * as schema from '../../db/schema';
+import { usuariosGlobal, empresasRegistry, usuarioEmpresas } from '../../db/auth-schema';
 import { markSetupComplete } from '../../lib/setup-check';
+import postgres from 'postgres';
+
+const DEFAULT_SLUG = process.env.DEFAULT_COMPANY_SLUG ?? 'public';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -48,7 +52,46 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ error: 'El sistema ya está configurado.' }, 409);
     }
 
-    // ── 3. Insertar permisos ───────────────────────────────────────
+    // ── 3. Crear schema inventsoft_auth y sus tablas ───────────────
+    const connectionString = process.env.DATABASE_URL!;
+    const rawClient = postgres(connectionString);
+    try {
+      await rawClient`CREATE SCHEMA IF NOT EXISTS inventsoft_auth`;
+      await rawClient`
+        CREATE TABLE IF NOT EXISTS inventsoft_auth.usuarios_global (
+          id           SERIAL PRIMARY KEY,
+          nombre       VARCHAR(200) NOT NULL,
+          email        VARCHAR(200) NOT NULL UNIQUE,
+          password_hash VARCHAR(200) NOT NULL,
+          creado_en    TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `;
+      await rawClient`
+        CREATE TABLE IF NOT EXISTS inventsoft_auth.empresas_registry (
+          id        SERIAL PRIMARY KEY,
+          slug      VARCHAR(100) NOT NULL UNIQUE,
+          nombre    VARCHAR(200) NOT NULL,
+          activo    BOOLEAN DEFAULT TRUE NOT NULL,
+          creado_en TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `;
+      await rawClient`
+        CREATE TABLE IF NOT EXISTS inventsoft_auth.usuario_empresas (
+          id             SERIAL PRIMARY KEY,
+          global_user_id INTEGER NOT NULL,
+          empresa_slug   VARCHAR(100) NOT NULL,
+          activo         BOOLEAN DEFAULT TRUE NOT NULL
+        )
+      `;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[setup] Error creando schema auth:', msg);
+      return json({ error: `Error al crear el schema de autenticación: ${msg.slice(0, 200)}` }, 500);
+    } finally {
+      await rawClient.end();
+    }
+
+    // ── 4. Insertar permisos ───────────────────────────────────────
     const permisosData = [
       { clave: 'clientes.ver',          nombre: 'Ver clientes',             modulo: 'Clientes'       },
       { clave: 'clientes.crear',        nombre: 'Crear clientes',           modulo: 'Clientes'       },
@@ -78,7 +121,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     const allClaves = permisosData.map(p => p.clave);
 
-    // ── 4. Insertar roles ──────────────────────────────────────────
+    // ── 5. Insertar roles ──────────────────────────────────────────
     await db.insert(schema.roles).values([
       {
         nombre: 'Administrador',
@@ -100,7 +143,7 @@ export const POST: APIRoute = async ({ request }) => {
       },
     ]);
 
-    // ── 5. Insertar empresa con los datos del formulario ───────────
+    // ── 6. Insertar empresa con los datos del formulario ───────────
     await db.insert(schema.empresa).values({
       nombre:    nombre.trim(),
       ruc:       ruc.trim(),
@@ -114,17 +157,38 @@ export const POST: APIRoute = async ({ request }) => {
       monedaSimbolo: '$',
     });
 
-    // ── 6. Crear usuario administrador ────────────────────────────
+    // ── 7. Crear usuario administrador (company DB) ────────────────
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     await db.insert(schema.usuarios).values({
       nombre:   adminNombre.trim(),
       email:    adminEmail.trim().toLowerCase(),
-      password: hashedPassword,
+      password: hashedPassword, // kept for backward compat; auth uses auth schema
       rol:      'Administrador',
       activo:   true,
     });
 
-    // ── 7. Crear la tabla secuencias con valores iniciales ────────
+    // ── 8. Registrar en schema central de autenticación ───────────
+    const adminEmailNorm = adminEmail.trim().toLowerCase();
+
+    const globalUserRows = await authDb.insert(usuariosGlobal).values({
+      nombre:       adminNombre.trim(),
+      email:        adminEmailNorm,
+      passwordHash: hashedPassword,
+    }).returning({ id: usuariosGlobal.id });
+
+    await authDb.insert(empresasRegistry).values({
+      slug:   DEFAULT_SLUG,
+      nombre: nombre.trim(),
+      activo: true,
+    });
+
+    await authDb.insert(usuarioEmpresas).values({
+      globalUserId: globalUserRows[0].id,
+      empresaSlug:  DEFAULT_SLUG,
+      activo:       true,
+    });
+
+    // ── 9. Crear la tabla secuencias con valores iniciales ─────────
     await db.insert(schema.secuencias).values([
       { tipo: 'FAC', siguiente: 1 },
       { tipo: 'PED', siguiente: 1 },
@@ -136,7 +200,7 @@ export const POST: APIRoute = async ({ request }) => {
       { tipo: 'CMD', siguiente: 1 },
     ]).onConflictDoNothing();
 
-    // ── 8. Marcar setup como completo ─────────────────────────────
+    // ── 10. Marcar setup como completo ────────────────────────────
     markSetupComplete();
 
     return json({ ok: true, message: 'Instalación completada exitosamente.' });

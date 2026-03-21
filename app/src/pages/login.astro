@@ -1,12 +1,15 @@
 ---
-import { getSession, login } from '../lib/auth';
-import { store } from '../lib/store';
+import { login, selectEmpresa } from '../lib/auth';
+import { authDb } from '../db';
+import { eq } from 'drizzle-orm';
+import { usuariosGlobal, usuarioEmpresas, empresasRegistry } from '../db/auth-schema';
 import bcrypt from 'bcryptjs';
 import '../styles/global.css';
 
-// If already logged in, redirect
-const session = await getSession(Astro.cookies);
-if (session) {
+// If already logged in and empresa cookie set, redirect to dashboard
+const existingUserId  = Astro.cookies.get('session_user_id')?.value;
+const existingEmpresa = Astro.cookies.get('session_empresa')?.value;
+if (existingUserId && existingEmpresa) {
   return Astro.redirect('/dashboard');
 }
 
@@ -35,17 +38,38 @@ if (urlError && ERROR_MESSAGES[urlError]) {
 if (Astro.request.method === 'POST') {
   try {
     const formData = await Astro.request.formData();
-    const email    = formData.get('email')?.toString() ?? '';
+    const email    = formData.get('email')?.toString().toLowerCase().trim() ?? '';
     const password = formData.get('password')?.toString() ?? '';
 
-    const user          = await store.getUsuarioByEmail(email);
-    const passwordValid = user ? await bcrypt.compare(password, user.password) : false;
+    // Authenticate against central auth DB
+    const globalRows = await authDb
+      .select()
+      .from(usuariosGlobal)
+      .where(eq(usuariosGlobal.email, email))
+      .limit(1);
 
-    if (user && passwordValid) {
-      if (!user.activo) {
-        errorType = 'inactive';
+    const globalUser    = globalRows[0] ?? null;
+    const passwordValid = globalUser ? await bcrypt.compare(password, globalUser.passwordHash) : false;
+
+    if (globalUser && passwordValid) {
+      // Get user's companies
+      const empresaRows = await authDb
+        .select({ slug: empresasRegistry.slug, nombre: empresasRegistry.nombre })
+        .from(usuarioEmpresas)
+        .innerJoin(empresasRegistry, eq(usuarioEmpresas.empresaSlug, empresasRegistry.slug))
+        .where(eq(usuarioEmpresas.globalUserId, globalUser.id));
+
+      login(Astro.cookies, String(globalUser.id));
+
+      if (empresaRows.length === 1) {
+        selectEmpresa(Astro.cookies, empresaRows[0].slug);
+        return Astro.redirect('/dashboard');
+      } else if (empresaRows.length > 1) {
+        return Astro.redirect('/select-company');
       } else {
-        login(Astro.cookies, user.id);
+        // Single-tenant fallback: auto-select default slug
+        const defaultSlug = import.meta.env.DEFAULT_COMPANY_SLUG ?? 'public';
+        selectEmpresa(Astro.cookies, defaultSlug);
         return Astro.redirect('/dashboard');
       }
     } else {
