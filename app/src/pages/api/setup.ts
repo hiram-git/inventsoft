@@ -159,13 +159,28 @@ export const POST: APIRoute = async ({ request }) => {
 
     // ── 7. Crear usuario administrador (company DB) ────────────────
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
-    await db.insert(schema.usuarios).values({
+    const [adminUser] = await db.insert(schema.usuarios).values({
       nombre:   adminNombre.trim(),
       email:    adminEmail.trim().toLowerCase(),
       password: hashedPassword, // kept for backward compat; auth uses auth schema
       rol:      'Administrador',
       activo:   true,
-    });
+    }).returning({ id: schema.usuarios.id });
+
+    // ── 7b. Crear sucursal principal por defecto ───────────────────
+    const [sucursalDefault] = await db.insert(schema.sucursales).values({
+      nombre:      nombre.trim(),   // mismo nombre que la empresa
+      descripcion: 'Sucursal principal',
+      direccion:   direccion.trim(),
+      telefono:    telefono.trim(),
+      activo:      true,
+    }).returning({ id: schema.sucursales.id });
+
+    // Asignar el admin a la sucursal principal
+    await db.insert(schema.usuarioSucursales).values({
+      usuarioId:  adminUser.id,
+      sucursalId: sucursalDefault.id,
+    }).onConflictDoNothing();
 
     // ── 8. Registrar en schema central de autenticación ───────────
     const adminEmailNorm = adminEmail.trim().toLowerCase();

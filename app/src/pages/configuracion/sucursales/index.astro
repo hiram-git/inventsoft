@@ -1,0 +1,252 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { store } from '../../../lib/store';
+
+let mensaje = '';
+let tipoMensaje = '';
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const action = formData.get('_action')?.toString();
+
+  if (action === 'create' || action === 'update') {
+    const almacenId   = formData.get('almacenId')?.toString() ?? '';
+    const almacen     = almacenId
+      ? (await store.getAlmacen(almacenId)) ?? null
+      : null;
+
+    const data = {
+      nombre:        formData.get('nombre')?.toString()?.trim()      ?? '',
+      descripcion:   formData.get('descripcion')?.toString()?.trim() ?? '',
+      direccion:     formData.get('direccion')?.toString()?.trim()   ?? '',
+      telefono:      formData.get('telefono')?.toString()?.trim()    ?? '',
+      almacenId:     almacenId || undefined,
+      almacenNombre: almacen ? (almacen.nombre as string) : '',
+      activo:        formData.get('activo') === 'on',
+    };
+
+    if (!data.nombre) {
+      mensaje = 'El nombre es obligatorio.';
+      tipoMensaje = 'error';
+    } else if (action === 'create') {
+      await store.createSucursal(data);
+      mensaje = 'Sucursal creada exitosamente.';
+      tipoMensaje = 'success';
+    } else {
+      const id = formData.get('id')?.toString() ?? '';
+      await store.updateSucursal(id, data);
+      mensaje = 'Sucursal actualizada.';
+      tipoMensaje = 'success';
+    }
+  }
+
+  if (action === 'delete') {
+    const id = formData.get('id')?.toString() ?? '';
+    await store.deleteSucursal(id);
+    mensaje = 'Sucursal eliminada.';
+    tipoMensaje = 'success';
+  }
+}
+
+const [sucursales, almacenes] = await Promise.all([
+  store.getSucursales(),
+  store.getAlmacenes(),
+]);
+---
+
+<AdminLayout title="Sucursales">
+  <div class="page-header">
+    <h1>Sucursales</h1>
+    <button class="btn btn-primary" onclick="document.getElementById('modalCrear').style.display='flex'">
+      <span class="material-icons-round">add</span> Nueva Sucursal
+    </button>
+  </div>
+
+  {mensaje && <div class={`alert alert-${tipoMensaje}`}>{mensaje}</div>}
+
+  <div class="card">
+    <table data-searchable>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Dirección</th>
+          <th>Teléfono</th>
+          <th>Almacén</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sucursales.length === 0 && (
+          <tr>
+            <td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px">
+              No hay sucursales registradas.
+            </td>
+          </tr>
+        )}
+        {sucursales.map(s => (
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:32px;height:32px;background:var(--primary);color:white;border-radius:8px;display:flex;align-items:center;justify-content:center">
+                  <span class="material-icons-round" style="font-size:16px">store</span>
+                </div>
+                <div>
+                  <div style="font-weight:600">{s.nombre}</div>
+                  {s.descripcion && <div style="font-size:0.78rem;color:var(--text-muted)">{s.descripcion}</div>}
+                </div>
+              </div>
+            </td>
+            <td>{s.direccion || <span style="color:var(--text-muted)">—</span>}</td>
+            <td>{s.telefono  || <span style="color:var(--text-muted)">—</span>}</td>
+            <td>{s.almacenNombre || <span style="color:var(--text-muted)">Sin almacén</span>}</td>
+            <td>
+              <span class:list={['badge', s.activo ? 'badge-success' : 'badge-danger']}>
+                {s.activo ? 'Activa' : 'Inactiva'}
+              </span>
+            </td>
+            <td>
+              <div style="display:flex;gap:4px">
+                <button
+                  class="btn btn-primary btn-sm"
+                  title="Editar"
+                  onclick={`openEdit(${JSON.stringify(s)})`}
+                >
+                  <span class="material-icons-round" style="font-size:16px">edit</span>
+                </button>
+                <a
+                  href={`/configuracion/sucursales/${s.id}/usuarios`}
+                  class="btn btn-secondary btn-sm"
+                  title="Asignar usuarios"
+                >
+                  <span class="material-icons-round" style="font-size:16px">group</span>
+                </a>
+                <form method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar esta sucursal? Esta acción no se puede deshacer.')">
+                  <input type="hidden" name="_action" value="delete" />
+                  <input type="hidden" name="id" value={s.id} />
+                  <button type="submit" class="btn btn-danger btn-sm" title="Eliminar">
+                    <span class="material-icons-round" style="font-size:16px">delete</span>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal Crear ───────────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalCrear" style="display:none">
+    <div class="modal">
+      <h2>Nueva Sucursal</h2>
+      <form method="POST">
+        <input type="hidden" name="_action" value="create" />
+        <div class="form-group">
+          <label>Nombre <span style="color:var(--danger)">*</span></label>
+          <input type="text" name="nombre" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Descripción</label>
+          <input type="text" name="descripcion" class="form-control" placeholder="Opcional" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" name="direccion" class="form-control" placeholder="Opcional" />
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="text" name="telefono" class="form-control" placeholder="Opcional" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Almacén asignado</label>
+          <select name="almacenId" class="form-control">
+            <option value="">Sin almacén</option>
+            {almacenes.map(a => (
+              <option value={a.id}>{a.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="activo" checked /> Activa
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalCrear').style.display='none'">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Modal Editar ──────────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalEditar" style="display:none">
+    <div class="modal">
+      <h2>Editar Sucursal</h2>
+      <form method="POST">
+        <input type="hidden" name="_action" value="update" />
+        <input type="hidden" name="id" id="editId" />
+        <div class="form-group">
+          <label>Nombre <span style="color:var(--danger)">*</span></label>
+          <input type="text" name="nombre" id="editNombre" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label>Descripción</label>
+          <input type="text" name="descripcion" id="editDescripcion" class="form-control" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" name="direccion" id="editDireccion" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="text" name="telefono" id="editTelefono" class="form-control" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Almacén asignado</label>
+          <select name="almacenId" id="editAlmacenId" class="form-control">
+            <option value="">Sin almacén</option>
+            {almacenes.map(a => (
+              <option value={String(a.id)}>{a.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="activo" id="editActivo" /> Activa
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditar').style.display='none'">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+</style>
+
+<script is:inline>
+  function openEdit(s) {
+    document.getElementById('editId').value          = s.id;
+    document.getElementById('editNombre').value      = s.nombre;
+    document.getElementById('editDescripcion').value = s.descripcion ?? '';
+    document.getElementById('editDireccion').value   = s.direccion  ?? '';
+    document.getElementById('editTelefono').value    = s.telefono   ?? '';
+    document.getElementById('editAlmacenId').value   = s.almacenId  ? String(s.almacenId) : '';
+    document.getElementById('editActivo').checked    = !!s.activo;
+    document.getElementById('modalEditar').style.display = 'flex';
+  }
+</script>

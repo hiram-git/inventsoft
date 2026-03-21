@@ -1,0 +1,207 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { store } from '../../../../lib/store';
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/configuracion/usuarios');
+
+const usuario = await store.getUsuario(id);
+if (!usuario) return Astro.redirect('/configuracion/usuarios');
+
+let mensaje = '';
+let tipoMensaje = '';
+
+if (Astro.request.method === 'POST') {
+  const formData   = await Astro.request.formData();
+  const action     = formData.get('_action')?.toString();
+  const sucursalId = formData.get('sucursalId')?.toString() ?? '';
+
+  if (action === 'asignar') {
+    await store.asignarSucursalUsuario(id, sucursalId);
+    mensaje = 'Sucursal asignada al usuario.';
+    tipoMensaje = 'success';
+  } else if (action === 'desasignar') {
+    await store.desasignarSucursalUsuario(id, sucursalId);
+    mensaje = 'Sucursal removida del usuario.';
+    tipoMensaje = 'success';
+  }
+}
+
+const [todasSucursales, sucursalesAsignadas] = await Promise.all([
+  store.getSucursales(),
+  store.getSucursalesUsuario(id),
+]);
+
+const asignadasIds = new Set(sucursalesAsignadas.map(s => String(s.id)));
+---
+
+<AdminLayout title={`Sucursales — ${usuario.nombre}`}>
+  <div class="page-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/configuracion/usuarios" class="btn btn-secondary btn-sm">
+        <span class="material-icons-round" style="font-size:16px">arrow_back</span>
+      </a>
+      <div>
+        <h1 style="margin:0">Sucursales del usuario</h1>
+        <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">
+          <span class="material-icons-round" style="font-size:14px;vertical-align:middle">manage_accounts</span>
+          {usuario.nombre} — {usuario.email}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {mensaje && <div class={`alert alert-${tipoMensaje}`}>{mensaje}</div>}
+
+  <div class="card">
+    <div style="padding:12px 0 16px;font-size:0.875rem;color:var(--text-muted)">
+      Asigne las sucursales a las que este usuario tendrá acceso. El sistema le pedirá seleccionar una al iniciar sesión si tiene más de una asignada.
+    </div>
+
+    {todasSucursales.length === 0 ? (
+      <div style="text-align:center;padding:48px;color:var(--text-muted)">
+        <span class="material-icons-round" style="font-size:48px;display:block;margin-bottom:12px">store_mall_directory</span>
+        No hay sucursales registradas.
+        <br />
+        <a href="/configuracion/sucursales" class="btn btn-primary" style="margin-top:16px">
+          <span class="material-icons-round">add</span> Crear sucursal
+        </a>
+      </div>
+    ) : (
+      <div class="sucursales-grid">
+        {todasSucursales.map(s => {
+          const asignada = asignadasIds.has(String(s.id));
+          return (
+            <div class:list={['sucursal-card', asignada ? 'asignada' : '']}>
+              <div class="sucursal-icon">
+                <span class="material-icons-round">{asignada ? 'store' : 'store_mall_directory'}</span>
+              </div>
+              <div class="sucursal-info">
+                <div class="sucursal-nombre">{s.nombre}</div>
+                {s.descripcion && <div class="sucursal-desc">{s.descripcion}</div>}
+                {s.direccion && (
+                  <div class="sucursal-meta">
+                    <span class="material-icons-round" style="font-size:13px">location_on</span>
+                    {s.direccion}
+                  </div>
+                )}
+                {s.almacenNombre && (
+                  <div class="sucursal-meta">
+                    <span class="material-icons-round" style="font-size:13px">warehouse</span>
+                    {s.almacenNombre}
+                  </div>
+                )}
+              </div>
+              <div class="sucursal-actions">
+                {asignada ? (
+                  <span class="badge badge-success" style="margin-bottom:8px">
+                    <span class="material-icons-round" style="font-size:13px;vertical-align:middle">check</span>
+                    Asignada
+                  </span>
+                ) : (
+                  <span class="badge badge-secondary" style="margin-bottom:8px">Sin acceso</span>
+                )}
+                <form method="POST">
+                  <input type="hidden" name="sucursalId" value={s.id} />
+                  {asignada ? (
+                    <>
+                      <input type="hidden" name="_action" value="desasignar" />
+                      <button
+                        type="submit"
+                        class="btn btn-danger btn-sm"
+                        onclick="return confirm('¿Quitar el acceso del usuario a esta sucursal?')"
+                      >
+                        <span class="material-icons-round" style="font-size:15px">remove_circle</span>
+                        Quitar acceso
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <input type="hidden" name="_action" value="asignar" />
+                      <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-icons-round" style="font-size:15px">add_circle</span>
+                        Dar acceso
+                      </button>
+                    </>
+                  )}
+                </form>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </div>
+</AdminLayout>
+
+<style>
+  .sucursales-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    padding: 4px 0 8px;
+  }
+
+  .sucursal-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #fafafa;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .sucursal-card.asignada {
+    border-color: var(--success, #22c55e);
+    background: #f0fdf4;
+  }
+
+  .sucursal-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sucursal-card.asignada .sucursal-icon {
+    background: #dcfce7;
+    color: var(--success, #16a34a);
+  }
+
+  .sucursal-info { flex: 1; }
+  .sucursal-nombre {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  .sucursal-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .sucursal-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .sucursal-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .badge-secondary {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+  }
+</style>
