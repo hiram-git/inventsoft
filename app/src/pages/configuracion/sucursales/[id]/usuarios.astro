@@ -1,0 +1,146 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { store } from '../../../../lib/store';
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/configuracion/sucursales');
+
+const sucursal = await store.getSucursal(id);
+if (!sucursal) return Astro.redirect('/configuracion/sucursales');
+
+let mensaje = '';
+let tipoMensaje = '';
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const action   = formData.get('_action')?.toString();
+  const usuarioId = formData.get('usuarioId')?.toString() ?? '';
+
+  if (action === 'asignar') {
+    await store.asignarSucursalUsuario(usuarioId, id);
+    mensaje = 'Usuario asignado a la sucursal.';
+    tipoMensaje = 'success';
+  } else if (action === 'desasignar') {
+    await store.desasignarSucursalUsuario(usuarioId, id);
+    mensaje = 'Usuario removido de la sucursal.';
+    tipoMensaje = 'success';
+  }
+}
+
+// All users + which ones are already assigned to this branch
+const [todosUsuarios, usuariosAsignados] = await Promise.all([
+  store.getUsuarios(),
+  // Get IDs of users already assigned to this sucursal
+  (async () => {
+    const asignaciones = await Promise.all(
+      (await store.getUsuarios()).map(async u => {
+        const sucursalesUsuario = await store.getSucursalesUsuario(String(u.id));
+        const estaAsignado = sucursalesUsuario.some(s => String(s.id) === id);
+        return { usuarioId: String(u.id), asignado: estaAsignado };
+      })
+    );
+    return new Set(asignaciones.filter(a => a.asignado).map(a => a.usuarioId));
+  })(),
+]);
+---
+
+<AdminLayout title={`Usuarios — ${sucursal.nombre}`}>
+  <div class="page-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/configuracion/sucursales" class="btn btn-secondary btn-sm">
+        <span class="material-icons-round" style="font-size:16px">arrow_back</span>
+      </a>
+      <div>
+        <h1 style="margin:0">Usuarios de la sucursal</h1>
+        <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">
+          <span class="material-icons-round" style="font-size:14px;vertical-align:middle">store</span>
+          {sucursal.nombre}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {mensaje && <div class={`alert alert-${tipoMensaje}`}>{mensaje}</div>}
+
+  <div class="card">
+    <div style="padding:12px 0 16px;font-size:0.875rem;color:var(--text-muted)">
+      Marque o desmarque los usuarios que tienen acceso a esta sucursal.
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Email</th>
+          <th>Rol</th>
+          <th style="text-align:center">Asignado</th>
+          <th style="text-align:center">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {todosUsuarios.map(u => {
+          const asignado = usuariosAsignados.has(String(u.id));
+          return (
+            <tr class:list={[asignado ? 'row-assigned' : '']}>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:32px;height:32px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8rem;flex-shrink:0">
+                    {(u.nombre as string).charAt(0).toUpperCase()}
+                  </div>
+                  {u.nombre}
+                </div>
+              </td>
+              <td>{u.email}</td>
+              <td><span class="badge badge-success">{u.rol}</span></td>
+              <td style="text-align:center">
+                {asignado
+                  ? <span class="material-icons-round" style="color:var(--success);font-size:20px" title="Asignado">check_circle</span>
+                  : <span class="material-icons-round" style="color:var(--text-muted);font-size:20px" title="No asignado">radio_button_unchecked</span>
+                }
+              </td>
+              <td style="text-align:center">
+                <form method="POST" style="display:inline">
+                  <input type="hidden" name="usuarioId" value={u.id} />
+                  {asignado ? (
+                    <>
+                      <input type="hidden" name="_action" value="desasignar" />
+                      <button
+                        type="submit"
+                        class="btn btn-danger btn-sm"
+                        title="Quitar acceso"
+                        onclick="return confirm('¿Quitar el acceso de este usuario a la sucursal?')"
+                      >
+                        <span class="material-icons-round" style="font-size:15px">person_remove</span>
+                        Quitar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <input type="hidden" name="_action" value="asignar" />
+                      <button type="submit" class="btn btn-primary btn-sm" title="Dar acceso">
+                        <span class="material-icons-round" style="font-size:15px">person_add</span>
+                        Asignar
+                      </button>
+                    </>
+                  )}
+                </form>
+              </td>
+            </tr>
+          );
+        })}
+        {todosUsuarios.length === 0 && (
+          <tr>
+            <td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px">
+              No hay usuarios registrados en el sistema.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<style>
+  .row-assigned {
+    background: #f0fdf4;
+  }
+</style>
