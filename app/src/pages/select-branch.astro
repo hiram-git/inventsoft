@@ -1,0 +1,281 @@
+---
+import { getSession } from '../lib/auth';
+import { store } from '../lib/store';
+import '../styles/global.css';
+
+// Must be logged in
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+
+const sucursales = await store.getSucursalesUsuario(session.id);
+
+// If only 0 or 1 sucursales, the middleware handles auto-redirect — shouldn't reach here
+// but guard anyway
+if (sucursales.length === 0) return Astro.redirect('/dashboard');
+
+// If switching branch from a POST request
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const sucursalId = form.get('sucursalId')?.toString();
+  if (sucursalId) {
+    const allowed = sucursales.find(s => String(s.id) === sucursalId);
+    if (allowed) {
+      const { selectSucursal } = await import('../lib/auth');
+      selectSucursal(Astro.cookies, sucursalId);
+      return Astro.redirect('/dashboard');
+    }
+  }
+}
+---
+
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seleccionar Sucursal — InventSoft</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+</head>
+<body>
+  <canvas id="bg-canvas" style="position:fixed;inset:0;pointer-events:none;z-index:0"></canvas>
+
+  <div class="container" style="position:relative;z-index:1">
+    <div class="card" id="branchCard">
+
+      <div class="header">
+        <div class="logo">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <h1>Seleccionar sucursal</h1>
+        <p>Hola, <strong>{session.nombre}</strong>. ¿Desde qué sucursal vas a trabajar hoy?</p>
+      </div>
+
+      <form method="POST" id="branchForm">
+        <div class="branch-list">
+          {sucursales.map((s: any) => (
+            <button type="submit" name="sucursalId" value={String(s.id)} class="branch-btn">
+              <div class="branch-icon">
+                <span class="material-icons-round">store</span>
+              </div>
+              <div class="branch-info">
+                <span class="branch-nombre">{s.nombre}</span>
+                {s.almacenNombre && (
+                  <span class="branch-almacen">
+                    <span class="material-icons-round" style="font-size:13px">inventory_2</span>
+                    {s.almacenNombre}
+                  </span>
+                )}
+              </div>
+              <span class="material-icons-round branch-arrow">arrow_forward_ios</span>
+            </button>
+          ))}
+        </div>
+      </form>
+
+      <div class="footer">
+        <a href="/login" class="logout-link" onclick="event.preventDefault();fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')">
+          <span class="material-icons-round" style="font-size:16px">logout</span>
+          Cerrar sesión
+        </a>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+
+<style>
+  .container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    padding: 24px 16px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 20px;
+    padding: 36px;
+    width: 100%;
+    max-width: 460px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.22);
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .logo {
+    width: 56px;
+    height: 56px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .header p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+  }
+  .header strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* Branch list */
+  .branch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .branch-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #f8fafc;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.18s ease;
+    width: 100%;
+  }
+  .branch-btn:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37,99,235,0.15);
+  }
+  .branch-btn:active {
+    transform: translateY(0);
+  }
+
+  .branch-icon {
+    width: 42px;
+    height: 42px;
+    background: var(--primary-light);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .branch-icon .material-icons-round {
+    font-size: 22px;
+    color: var(--primary);
+  }
+
+  .branch-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .branch-nombre {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  .branch-almacen {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .branch-arrow {
+    font-size: 16px !important;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: color 0.18s;
+  }
+  .branch-btn:hover .branch-arrow {
+    color: var(--primary);
+  }
+
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+  }
+  .logout-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .logout-link:hover {
+    color: var(--danger);
+    background: #fef2f2;
+  }
+</style>
+
+<script>
+  import { gsap } from 'gsap';
+
+  // Background particles
+  const canvas = document.getElementById('bg-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const W = () => canvas.width  = window.innerWidth;
+  const H = () => canvas.height = window.innerHeight;
+  W(); H();
+  window.addEventListener('resize', () => { W(); H(); });
+
+  interface Particle { x:number; y:number; r:number; alpha:number; vx:number; vy:number; }
+  const particles: Particle[] = Array.from({ length: 38 }, () => ({
+    x: Math.random() * window.innerWidth,  y: Math.random() * window.innerHeight,
+    r: Math.random() * 3 + 1,             alpha: Math.random() * 0.4 + 0.05,
+    vx: (Math.random() - 0.5) * 0.35,    vy: (Math.random() - 0.5) * 0.35,
+  }));
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;   if (p.x > canvas.width)  p.x = 0;
+      if (p.y < 0) p.y = canvas.height;  if (p.y > canvas.height) p.y = 0;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${p.alpha})`; ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  // Card entrance
+  const card    = document.getElementById('branchCard')!;
+  const buttons = document.querySelectorAll<HTMLElement>('.branch-btn');
+  gsap.set(card,    { opacity: 0, y: 40, scale: 0.95 });
+  gsap.set(buttons, { opacity: 0, x: -16 });
+  const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+  tl.to(card,    { opacity: 1, y: 0, scale: 1, duration: 0.55 })
+    .to(buttons, { opacity: 1, x: 0, duration: 0.3, stagger: 0.07 }, '-=0.2');
+
+  // Button loading state
+  document.getElementById('branchForm')!.addEventListener('submit', (e) => {
+    const btn = (e.submitter as HTMLButtonElement);
+    if (!btn) return;
+    const arrow = btn.querySelector<HTMLElement>('.branch-arrow')!;
+    arrow.textContent = 'sync';
+    arrow.style.animation = 'spin 0.8s linear infinite';
+    btn.disabled = true;
+  });
+</script>

@@ -7,7 +7,18 @@ declare namespace App {
       nombre: string;
       email: string;
       rol: string;
+      globalId: string;
     };
+    empresa: {
+      slug: string;
+      nombre: string;
+    } | null;
+    sucursal: {
+      id: string;
+      nombre: string;
+      almacenId: string | null;
+      almacenNombre: string;
+    } | null;
     moneda: {
       simbolo: string;
       codigo: string;

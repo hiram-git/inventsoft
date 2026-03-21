@@ -1,0 +1,680 @@
+---
+import { isSetupComplete } from '../lib/setup-check';
+import '../styles/global.css';
+
+// If already configured, send to login
+if (await isSetupComplete()) {
+  return Astro.redirect('/login');
+}
+---
+
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuración Inicial — InventSoft</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+</head>
+<body>
+  <canvas id="bg-canvas" style="position:fixed;inset:0;pointer-events:none;z-index:0"></canvas>
+
+  <div class="setup-container" style="position:relative;z-index:1">
+    <div class="setup-card" id="setupCard">
+
+      <!-- Header -->
+      <div class="setup-header">
+        <div class="setup-logo">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <h1>InventSoft</h1>
+        <p>Configuración inicial del sistema</p>
+      </div>
+
+      <!-- Step indicator -->
+      <div class="steps-indicator">
+        <div class="step active" id="step-dot-1">
+          <div class="step-dot"><span class="material-icons-round">business</span></div>
+          <span class="step-label">Empresa</span>
+        </div>
+        <div class="step-line" id="step-line"></div>
+        <div class="step" id="step-dot-2">
+          <div class="step-dot"><span class="material-icons-round">manage_accounts</span></div>
+          <span class="step-label">Administrador</span>
+        </div>
+      </div>
+
+      <!-- Error global -->
+      <div id="globalError" class="error-callout" style="display:none">
+        <span class="material-icons-round error-callout-icon">error</span>
+        <span id="globalErrorMsg"></span>
+      </div>
+
+      <!-- ─── STEP 1: Datos de la empresa ─────────────────────────────── -->
+      <div id="step1" class="step-panel">
+        <h2 class="step-title">Datos de la empresa</h2>
+
+        <div class="form-row">
+          <div class="form-group full">
+            <label for="nombre">Nombre de la empresa <span class="required">*</span></label>
+            <input type="text" id="nombre" name="nombre" class="form-control" placeholder="Mi Empresa S.A." required />
+          </div>
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="ruc">RUC / RIF</label>
+            <input type="text" id="ruc" name="ruc" class="form-control" placeholder="J-12345678-9" />
+          </div>
+          <div class="form-group">
+            <label for="nit">NIT</label>
+            <input type="text" id="nit" name="nit" class="form-control" placeholder="900.123.456-7" />
+          </div>
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="telefono">Teléfono</label>
+            <input type="tel" id="telefono" name="telefono" class="form-control" placeholder="+58 212 555 0100" />
+          </div>
+          <div class="form-group">
+            <label for="email">Correo electrónico</label>
+            <input type="email" id="email" name="email" class="form-control" placeholder="contacto@empresa.com" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full">
+            <label for="direccion">Dirección</label>
+            <textarea id="direccion" name="direccion" class="form-control" rows="2"
+              placeholder="Av. Principal 100, Ciudad"></textarea>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-primary next-btn" id="btnNext">
+          Siguiente
+          <span class="material-icons-round" style="font-size:18px">arrow_forward</span>
+        </button>
+      </div>
+
+      <!-- ─── STEP 2: Usuario administrador ───────────────────────────── -->
+      <div id="step2" class="step-panel" style="display:none">
+        <h2 class="step-title">Usuario administrador</h2>
+
+        <div class="form-group">
+          <label for="adminNombre">Nombre completo <span class="required">*</span></label>
+          <input type="text" id="adminNombre" name="adminNombre" class="form-control"
+            placeholder="Juan Pérez" required />
+        </div>
+
+        <div class="form-group">
+          <label for="adminEmail">Correo electrónico <span class="required">*</span></label>
+          <input type="email" id="adminEmail" name="adminEmail" class="form-control"
+            placeholder="admin@empresa.com" required />
+        </div>
+
+        <div class="form-group">
+          <label for="adminPassword">Contraseña <span class="required">*</span></label>
+          <div class="input-icon-wrapper">
+            <input type="password" id="adminPassword" name="adminPassword" class="form-control"
+              placeholder="Mínimo 6 caracteres" required minlength="6" />
+            <button type="button" class="toggle-pass" data-target="adminPassword" tabindex="-1">
+              <span class="material-icons-round" id="eyeIcon1">visibility</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="adminConfirm">Confirmar contraseña <span class="required">*</span></label>
+          <div class="input-icon-wrapper">
+            <input type="password" id="adminConfirm" name="adminConfirm" class="form-control"
+              placeholder="Repite la contraseña" required minlength="6" />
+            <button type="button" class="toggle-pass" data-target="adminConfirm" tabindex="-1">
+              <span class="material-icons-round" id="eyeIcon2">visibility</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="btnBack">
+            <span class="material-icons-round" style="font-size:18px">arrow_back</span>
+            Atrás
+          </button>
+          <button type="button" class="btn btn-primary install-btn" id="btnInstall">
+            <span class="material-icons-round" style="font-size:18px">rocket_launch</span>
+            Instalar
+          </button>
+        </div>
+      </div>
+
+      <!-- ─── STEP 3: Installing ───────────────────────────────────────── -->
+      <div id="step3" class="step-panel" style="display:none">
+        <div class="installing-view">
+          <div class="install-spinner">
+            <span class="material-icons-round spin-icon">sync</span>
+          </div>
+          <h2>Instalando...</h2>
+          <p id="installStatus">Configurando la base de datos</p>
+          <div class="install-progress">
+            <div class="install-bar" id="installBar"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── STEP 4: Success ─────────────────────────────────────────── -->
+      <div id="step4" class="step-panel" style="display:none">
+        <div class="success-view">
+          <div class="success-icon">
+            <span class="material-icons-round">check_circle</span>
+          </div>
+          <h2>¡Instalación completada!</h2>
+          <p>El sistema ha sido configurado correctamente.</p>
+          <a href="/login" class="btn btn-primary" style="margin-top:24px;display:inline-flex;gap:8px;align-items:center">
+            <span class="material-icons-round" style="font-size:18px">login</span>
+            Iniciar sesión
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+
+<style>
+  .setup-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    padding: 32px 20px;
+  }
+
+  .setup-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.22);
+  }
+
+  /* Header */
+  .setup-header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .setup-logo {
+    width: 60px;
+    height: 60px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+  }
+  .setup-header h1 {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .setup-header p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+  }
+
+  /* Steps indicator */
+  .steps-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 28px;
+  }
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-dot {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+  }
+  .step-dot .material-icons-round {
+    font-size: 20px;
+    color: #9ca3af;
+    transition: color 0.3s;
+  }
+  .step.active .step-dot {
+    background: var(--primary);
+  }
+  .step.active .step-dot .material-icons-round {
+    color: white;
+  }
+  .step.done .step-dot {
+    background: #10b981;
+  }
+  .step.done .step-dot .material-icons-round {
+    color: white;
+  }
+  .step-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    transition: color 0.3s;
+  }
+  .step.active .step-label,
+  .step.done .step-label {
+    color: var(--text);
+  }
+  .step-line {
+    flex: 1;
+    height: 2px;
+    background: #e5e7eb;
+    margin: 0 12px;
+    margin-bottom: 22px;
+    transition: background 0.4s;
+    max-width: 80px;
+  }
+  .step-line.done {
+    background: #10b981;
+  }
+
+  /* Error callout */
+  .error-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-left: 4px solid var(--danger);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+    color: #991b1b;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .error-callout-icon {
+    font-size: 18px !important;
+    color: var(--danger);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* Step panels */
+  .step-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 20px;
+  }
+
+  /* Form layout */
+  .form-row { margin-bottom: 0; }
+  .two-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .form-group.full { width: 100%; }
+  .form-group { margin-bottom: 16px; }
+
+  textarea.form-control {
+    resize: vertical;
+    min-height: 72px;
+  }
+
+  .required { color: var(--danger); }
+
+  /* Password toggle */
+  .input-icon-wrapper {
+    position: relative;
+  }
+  .input-icon-wrapper .form-control {
+    padding-right: 44px;
+  }
+  .toggle-pass {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+  }
+  .toggle-pass:hover { color: var(--primary); }
+  .toggle-pass .material-icons-round { font-size: 20px !important; }
+
+  /* Buttons */
+  .next-btn {
+    width: 100%;
+    margin-top: 8px;
+    justify-content: center;
+    gap: 8px;
+  }
+  .form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .form-actions .btn-ghost {
+    flex: 0 0 auto;
+  }
+  .install-btn {
+    flex: 1;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  /* Installing view */
+  .installing-view {
+    text-align: center;
+    padding: 20px 0;
+  }
+  .install-spinner {
+    width: 72px;
+    height: 72px;
+    background: var(--primary-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .spin-icon {
+    font-size: 36px !important;
+    color: var(--primary);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .installing-view h2 {
+    font-size: 1.25rem;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .installing-view p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 20px;
+  }
+  .install-progress {
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .install-bar {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+    width: 0%;
+    transition: width 0.5s ease;
+  }
+
+  /* Success view */
+  .success-view {
+    text-align: center;
+    padding: 20px 0;
+  }
+  .success-icon {
+    width: 80px;
+    height: 80px;
+    background: #d1fae5;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .success-icon .material-icons-round {
+    font-size: 40px !important;
+    color: #059669;
+  }
+  .success-view h2 {
+    font-size: 1.25rem;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .success-view p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+  }
+
+  @media (max-width: 480px) {
+    .two-cols { grid-template-columns: 1fr; }
+    .setup-card { padding: 28px 20px; }
+  }
+</style>
+
+<script>
+  import { gsap } from 'gsap';
+
+  // ── Background particles ────────────────────────────────────────
+  const canvas = document.getElementById('bg-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const W = () => canvas.width  = window.innerWidth;
+  const H = () => canvas.height = window.innerHeight;
+  W(); H();
+  window.addEventListener('resize', () => { W(); H(); });
+
+  interface Particle { x: number; y: number; r: number; alpha: number; vx: number; vy: number; }
+  const particles: Particle[] = Array.from({ length: 38 }, () => ({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    r: Math.random() * 3 + 1,
+    alpha: Math.random() * 0.4 + 0.05,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: (Math.random() - 0.5) * 0.35,
+  }));
+  function drawParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;   if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;  if (p.y > canvas.height) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${p.alpha})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(drawParticles);
+  }
+  drawParticles();
+
+  // ── Card entrance animation ─────────────────────────────────────
+  const card = document.getElementById('setupCard')!;
+  gsap.set(card, { opacity: 0, y: 48, scale: 0.94 });
+  gsap.to(card, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: 'power3.out' });
+
+  // Input focus micro-animation
+  document.querySelectorAll<HTMLInputElement>('.form-control').forEach(el => {
+    el.addEventListener('focus', () => gsap.to(el, { scale: 1.012, duration: 0.18 }));
+    el.addEventListener('blur',  () => gsap.to(el, { scale: 1,     duration: 0.18 }));
+  });
+
+  // ── Step state ──────────────────────────────────────────────────
+  let currentStep = 1;
+  const stepData: Record<string, string> = {};
+
+  const step1Panel = document.getElementById('step1')!;
+  const step2Panel = document.getElementById('step2')!;
+  const step3Panel = document.getElementById('step3')!;
+  const step4Panel = document.getElementById('step4')!;
+  const stepDot1   = document.getElementById('step-dot-1')!;
+  const stepDot2   = document.getElementById('step-dot-2')!;
+  const stepLine   = document.getElementById('step-line')!;
+  const globalError    = document.getElementById('globalError')!;
+  const globalErrorMsg = document.getElementById('globalErrorMsg')!;
+  const installBar     = document.getElementById('installBar')!;
+  const installStatus  = document.getElementById('installStatus')!;
+
+  function showError(msg: string) {
+    globalErrorMsg.textContent = msg;
+    globalError.style.display = 'flex';
+    gsap.fromTo(globalError, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.3 });
+    gsap.to(globalError, {
+      keyframes: [
+        { x: -10, duration: 0.05 }, { x: 10, duration: 0.05 },
+        { x: -8,  duration: 0.05 }, { x: 8,  duration: 0.05 },
+        { x: -4,  duration: 0.05 }, { x: 0,  duration: 0.05 },
+      ],
+    }, 0.3);
+  }
+
+  function hideError() {
+    globalError.style.display = 'none';
+  }
+
+  function switchPanel(from: HTMLElement, to: HTMLElement) {
+    gsap.to(from, { opacity: 0, x: -20, duration: 0.2, onComplete: () => {
+      from.style.display = 'none';
+      to.style.display   = 'block';
+      gsap.fromTo(to, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.3 });
+    }});
+  }
+
+  // ── Password visibility toggles ─────────────────────────────────
+  document.querySelectorAll<HTMLButtonElement>('.toggle-pass').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target!;
+      const input    = document.getElementById(targetId) as HTMLInputElement;
+      const icon     = btn.querySelector('.material-icons-round')!;
+      if (input.type === 'password') {
+        input.type    = 'text';
+        icon.textContent = 'visibility_off';
+      } else {
+        input.type    = 'password';
+        icon.textContent = 'visibility';
+      }
+    });
+  });
+
+  // ── Next (Step 1 → 2) ───────────────────────────────────────────
+  document.getElementById('btnNext')!.addEventListener('click', () => {
+    hideError();
+    const nombre = (document.getElementById('nombre') as HTMLInputElement).value.trim();
+    if (!nombre) {
+      showError('El nombre de la empresa es obligatorio.');
+      return;
+    }
+    stepData.nombre    = nombre;
+    stepData.ruc       = (document.getElementById('ruc')       as HTMLInputElement).value.trim();
+    stepData.nit       = (document.getElementById('nit')       as HTMLInputElement).value.trim();
+    stepData.telefono  = (document.getElementById('telefono')  as HTMLInputElement).value.trim();
+    stepData.email     = (document.getElementById('email')     as HTMLInputElement).value.trim();
+    stepData.direccion = (document.getElementById('direccion') as HTMLTextAreaElement).value.trim();
+
+    // Advance indicators
+    stepDot1.classList.add('done');
+    stepDot1.classList.remove('active');
+    stepDot2.classList.add('active');
+    stepLine.classList.add('done');
+    currentStep = 2;
+    switchPanel(step1Panel, step2Panel);
+  });
+
+  // ── Back (Step 2 → 1) ───────────────────────────────────────────
+  document.getElementById('btnBack')!.addEventListener('click', () => {
+    hideError();
+    stepDot1.classList.remove('done');
+    stepDot1.classList.add('active');
+    stepDot2.classList.remove('active');
+    stepLine.classList.remove('done');
+    currentStep = 1;
+    switchPanel(step2Panel, step1Panel);
+  });
+
+  // ── Install ─────────────────────────────────────────────────────
+  document.getElementById('btnInstall')!.addEventListener('click', async () => {
+    hideError();
+
+    const adminNombre   = (document.getElementById('adminNombre')   as HTMLInputElement).value.trim();
+    const adminEmail    = (document.getElementById('adminEmail')    as HTMLInputElement).value.trim();
+    const adminPassword = (document.getElementById('adminPassword') as HTMLInputElement).value;
+    const adminConfirm  = (document.getElementById('adminConfirm')  as HTMLInputElement).value;
+
+    if (!adminNombre || !adminEmail || !adminPassword) {
+      showError('Todos los campos del administrador son obligatorios.');
+      return;
+    }
+    if (adminPassword.length < 6) {
+      showError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (adminPassword !== adminConfirm) {
+      showError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    stepData.adminNombre   = adminNombre;
+    stepData.adminEmail    = adminEmail;
+    stepData.adminPassword = adminPassword;
+
+    // Show installing panel
+    switchPanel(step2Panel, step3Panel);
+
+    // Animate progress bar in stages
+    const progressSteps = [
+      { width: '20%', msg: 'Creando tablas en la base de datos…'  },
+      { width: '50%', msg: 'Configurando datos iniciales…'        },
+      { width: '75%', msg: 'Creando usuario administrador…'       },
+      { width: '95%', msg: 'Finalizando instalación…'             },
+    ];
+    let progressIdx = 0;
+    const progressInterval = setInterval(() => {
+      if (progressIdx < progressSteps.length) {
+        const s = progressSteps[progressIdx++];
+        installBar.style.width  = s.width;
+        installStatus.textContent = s.msg;
+      } else {
+        clearInterval(progressInterval);
+      }
+    }, 800);
+
+    try {
+      const res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(stepData),
+      });
+
+      clearInterval(progressInterval);
+
+      if (res.ok) {
+        installBar.style.width = '100%';
+        installStatus.textContent = '¡Completado!';
+        await new Promise(r => setTimeout(r, 600));
+        switchPanel(step3Panel, step4Panel);
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        switchPanel(step3Panel, step2Panel);
+        // Restore step 2 indicator
+        stepDot2.classList.add('active');
+        showError(data.error ?? 'Error durante la instalación. Revisa la consola del servidor.');
+      }
+    } catch {
+      clearInterval(progressInterval);
+      switchPanel(step3Panel, step2Panel);
+      stepDot2.classList.add('active');
+      showError('No se pudo conectar con el servidor. Verifique que el servicio esté corriendo.');
+    }
+  });
+</script>
