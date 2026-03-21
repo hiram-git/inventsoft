@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* HeroUI: registrar el plugin en CSS-first (Tailwind 4) */
+@plugin "@heroui/react/plugin";

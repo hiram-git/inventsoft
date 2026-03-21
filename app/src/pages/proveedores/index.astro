@@ -1,0 +1,110 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { store } from '../../lib/store';
+
+let mensaje = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = form.get('_action')?.toString();
+
+  if (action === 'delete') {
+    await store.deleteProveedor(form.get('id')?.toString() ?? '');
+    mensaje = 'Proveedor eliminado.';
+  }
+
+  if (action === 'toggle') {
+    const id = form.get('id')?.toString() ?? '';
+    const activo = form.get('activo') === '1';
+    await store.updateProveedor(id, { activo: !activo });
+  }
+}
+
+const proveedores = await store.getProveedores();
+---
+
+<AdminLayout title="Proveedores">
+  <div class="page-header">
+    <h1><span class="material-icons-round">local_shipping</span> Proveedores</h1>
+    <a href="/proveedores/nuevo" class="btn btn-primary">
+      <span class="material-icons-round">add</span> Nuevo Proveedor
+    </a>
+  </div>
+
+  {mensaje && <div class="alert alert-success"><span class="material-icons-round">check_circle</span>{mensaje}</div>}
+
+  <div class="card">
+    <table data-searchable>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>RFC</th>
+          <th>Contacto</th>
+          <th>Teléfono</th>
+          <th>Email</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {proveedores.map(p => (
+          <tr>
+            <td><strong>{p.nombre}</strong></td>
+            <td style="font-size:0.85rem;color:var(--text-muted)">{p.rfc || '—'}</td>
+            <td style="font-size:0.85rem">{p.contacto || '—'}</td>
+            <td style="font-size:0.85rem">{p.telefono || '—'}</td>
+            <td style="font-size:0.85rem">{p.email || '—'}</td>
+            <td>
+              <span class:list={['badge', p.activo ? 'badge-success' : 'badge-secondary']}>
+                {p.activo ? 'Activo' : 'Inactivo'}
+              </span>
+            </td>
+            <td>
+              <div style="display:flex;gap:4px">
+                <a href={`/proveedores/${p.id}/editar`} class="btn btn-sm btn-warning" title="Editar">
+                  <span class="material-icons-round" style="font-size:15px">edit</span>
+                </a>
+                <form method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar este proveedor?')">
+                  <input type="hidden" name="_action" value="delete" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <button type="submit" class="btn btn-sm btn-danger">
+                    <span class="material-icons-round" style="font-size:15px">delete</span>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        ))}
+        {proveedores.length === 0 && (
+          <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:32px">
+            No hay proveedores. <a href="/proveedores/nuevo" style="color:var(--primary)">Crear el primero</a>
+          </td></tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px; }
+  .alert { display:flex; align-items:center; gap:8px; padding:12px 16px; border-radius:var(--radius); margin-bottom:16px; font-size:0.875rem; }
+  .alert-success { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; }
+  .card { background:white; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#f8fafc; padding:10px 14px; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+  td { padding:10px 14px; border-bottom:1px solid var(--border); font-size:0.875rem; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#fafafa; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:600; }
+  .badge-success  { background:#dcfce7; color:#16a34a; }
+  .badge-secondary{ background:#f1f5f9; color:#64748b; }
+  .btn { display:inline-flex; align-items:center; gap:4px; padding:8px 14px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:1px solid transparent; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-sm { padding:4px 8px; }
+  .btn-primary  { background:var(--primary); color:white; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-warning  { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; }
+  .btn-warning:hover { background:#fef3c7; }
+  .btn-danger   { background:var(--danger); color:white; }
+  .btn-danger:hover { background:#b91c1c; }
+</style>

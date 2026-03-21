@@ -14,6 +14,8 @@ export type Almacen = typeof schema.almacenes.$inferSelect;
 export type InventarioRow = typeof schema.inventario.$inferSelect;
 export type KardexRow = typeof schema.kardex.$inferSelect;
 export type Compra = typeof schema.compras.$inferSelect;
+export type Proveedor = typeof schema.proveedores.$inferSelect;
+export type PagoProveedor = typeof schema.pagosProveedor.$inferSelect;
 export type Pedido = typeof schema.pedidos.$inferSelect;
 export type Servicio = typeof schema.servicios.$inferSelect;
 export type NotaCredito = typeof schema.notasCredito.$inferSelect;
@@ -129,6 +131,7 @@ function normalizeCompra(row: Compra) {
   return {
     ...row,
     id: String(row.id),
+    proveedorId: row.proveedorId ? String(row.proveedorId) : null,
     almacenId: String(row.almacenId),
     subtotal: num(row.subtotal),
     iva: num(row.iva),
@@ -138,6 +141,20 @@ function normalizeCompra(row: Compra) {
       precioUnitario: num(i.precioUnitario),
       subtotal: num(i.subtotal),
     })),
+  };
+}
+
+function normalizeProveedor(row: Proveedor) {
+  return { ...row, id: String(row.id) };
+}
+
+function normalizePagoProveedor(row: PagoProveedor) {
+  return {
+    ...row,
+    id: String(row.id),
+    compraId: String(row.compraId),
+    proveedorId: row.proveedorId ? String(row.proveedorId) : null,
+    monto: num(row.monto),
   };
 }
 
@@ -707,6 +724,7 @@ export const store = {
   },
 
   async createCompra(data: {
+    proveedorId?: string;
     proveedorNombre: string;
     almacenId: string;
     almacenNombre: string;
@@ -725,6 +743,7 @@ export const store = {
 
     const rows = await db.insert(schema.compras).values({
       numero,
+      proveedorId: data.proveedorId ? Number(data.proveedorId) : null,
       proveedorNombre: data.proveedorNombre,
       almacenId: Number(data.almacenId),
       almacenNombre: data.almacenNombre,
@@ -777,6 +796,127 @@ export const store = {
   async cancelarCompra(id: string) {
     const rows = await db.update(schema.compras).set({ estado: 'cancelada' }).where(eq(schema.compras.id, Number(id))).returning();
     return rows[0] ? normalizeCompra(rows[0]) : null;
+  },
+
+  // --- Proveedores ---
+  async getProveedores() {
+    const rows = await db.select().from(schema.proveedores).orderBy(schema.proveedores.nombre);
+    return rows.map(normalizeProveedor);
+  },
+
+  async getProveedor(id: string) {
+    const rows = await db.select().from(schema.proveedores).where(eq(schema.proveedores.id, Number(id)));
+    return rows[0] ? normalizeProveedor(rows[0]) : undefined;
+  },
+
+  async createProveedor(data: { nombre: string; rfc?: string; contacto?: string; telefono?: string; email?: string; direccion?: string; notas?: string; activo?: boolean }) {
+    const rows = await db.insert(schema.proveedores).values({
+      nombre: data.nombre,
+      rfc: data.rfc ?? '',
+      contacto: data.contacto ?? '',
+      telefono: data.telefono ?? '',
+      email: data.email ?? '',
+      direccion: data.direccion ?? '',
+      notas: data.notas ?? '',
+      activo: data.activo ?? true,
+    }).returning();
+    return normalizeProveedor(rows[0]);
+  },
+
+  async updateProveedor(id: string, data: Record<string, unknown>) {
+    const rows = await db.update(schema.proveedores).set(data).where(eq(schema.proveedores.id, Number(id))).returning();
+    return rows[0] ? normalizeProveedor(rows[0]) : null;
+  },
+
+  async deleteProveedor(id: string) {
+    await db.delete(schema.proveedores).where(eq(schema.proveedores.id, Number(id)));
+  },
+
+  // --- Pagos a Proveedores (Cuentas por Pagar) ---
+  async getPagosProveedor(compraId?: string) {
+    if (compraId) {
+      const rows = await db.select().from(schema.pagosProveedor)
+        .where(eq(schema.pagosProveedor.compraId, Number(compraId)))
+        .orderBy(desc(schema.pagosProveedor.id));
+      return rows.map(normalizePagoProveedor);
+    }
+    const rows = await db.select().from(schema.pagosProveedor).orderBy(desc(schema.pagosProveedor.id));
+    return rows.map(normalizePagoProveedor);
+  },
+
+  async createPagoProveedor(data: {
+    compraId: string;
+    compraNumero: string;
+    proveedorId?: string;
+    proveedorNombre: string;
+    monto: number;
+    fecha: string;
+    metodoPago: string;
+    referencia?: string;
+    cuentaBancaria?: string;
+    notas?: string;
+  }) {
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.pagosProveedor);
+    const count = Number(countResult[0].count);
+    const numero = `PAP-${String(count + 1).padStart(3, '0')}`;
+    const rows = await db.insert(schema.pagosProveedor).values({
+      numero,
+      compraId: Number(data.compraId),
+      compraNumero: data.compraNumero,
+      proveedorId: data.proveedorId ? Number(data.proveedorId) : null,
+      proveedorNombre: data.proveedorNombre,
+      monto: String(data.monto),
+      fecha: data.fecha,
+      metodoPago: data.metodoPago,
+      referencia: data.referencia ?? '',
+      cuentaBancaria: data.cuentaBancaria ?? '',
+      notas: data.notas ?? '',
+      estado: 'aplicado',
+    }).returning();
+    return normalizePagoProveedor(rows[0]);
+  },
+
+  async cancelarPagoProveedor(id: string) {
+    const rows = await db.update(schema.pagosProveedor)
+      .set({ estado: 'cancelado' })
+      .where(eq(schema.pagosProveedor.id, Number(id)))
+      .returning();
+    return rows[0] ? normalizePagoProveedor(rows[0]) : null;
+  },
+
+  // Saldo pendiente de una compra (similar a getSaldoFactura)
+  async getSaldoCompra(compraId: string) {
+    const compra = await this.getCompra(compraId);
+    if (!compra) return null;
+    const pagos = await db.select().from(schema.pagosProveedor).where(
+      and(eq(schema.pagosProveedor.compraId, Number(compraId)), eq(schema.pagosProveedor.estado, 'aplicado'))
+    );
+    const totalPagado = pagos.reduce((s, p) => s + num(p.monto), 0);
+    const saldo = Math.max(0, compra.total - totalPagado);
+    let estadoPago: 'pendiente' | 'parcial' | 'pagada' = 'pendiente';
+    if (saldo === 0) estadoPago = 'pagada';
+    else if (totalPagado > 0) estadoPago = 'parcial';
+    return { compra, totalPagado, saldo, estadoPago };
+  },
+
+  // --- Cuentas por Pagar ---
+  async getCuentasPorPagar() {
+    const todasCompras = await db.select().from(schema.compras).orderBy(desc(schema.compras.id));
+    const compras = todasCompras.map(normalizeCompra).filter(c => c.estado === 'recibida');
+
+    const result = await Promise.all(compras.map(async (c) => {
+      const pagos = await db.select().from(schema.pagosProveedor).where(
+        and(eq(schema.pagosProveedor.compraId, Number(c.id)), eq(schema.pagosProveedor.estado, 'aplicado'))
+      );
+      const totalPagado = pagos.reduce((s, p) => s + num(p.monto), 0);
+      const saldo = Math.max(0, c.total - totalPagado);
+      let estadoPago: 'pendiente' | 'parcial' | 'pagada' = 'pendiente';
+      if (saldo === 0) estadoPago = 'pagada';
+      else if (totalPagado > 0) estadoPago = 'parcial';
+      return { ...c, totalPagado, saldo, estadoPago };
+    }));
+
+    return result;
   },
 
   // --- Pedidos ---

@@ -1,34 +1,19 @@
 {
-  "name": "admin-portal",
-  "type": "module",
-  "version": "1.0.0",
+  "name": "inventsoft-monorepo",
+  "private": true,
+  "workspaces": [
+    "app",
+    "mobile-heroui",
+    "mobile-flowbite",
+    "mobile-shadcn"
+  ],
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "db:seed": "npx tsx src/db/seed.ts"
-  },
-  "dependencies": {
-    "@astrojs/node": "^9.5.3",
-    "@tailwindcss/vite": "^4.2.1",
-    "astro": "^5.2.0",
-    "bcryptjs": "^3.0.3",
-    "dotenv": "^17.3.1",
-    "drizzle-orm": "^0.45.1",
-    "gsap": "^3.14.2",
-    "node-thermal-printer": "^4.6.0",
-    "pdfkit": "^0.17.2",
-    "postgres": "^3.4.8",
-    "tailwindcss": "^4.2.1"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/pdfkit": "^0.17.5",
-    "drizzle-kit": "^0.31.9",
-    "tsx": "^4.21.0"
+    "dev:app":      "npm run dev      --workspace=app",
+    "dev:heroui":   "npm run dev      --workspace=mobile-heroui",
+    "dev:flowbite": "npm run dev      --workspace=mobile-flowbite",
+    "dev:shadcn":   "npm run dev      --workspace=mobile-shadcn",
+    "build:app":    "npm run build    --workspace=app",
+    "db:push":      "npm run db:push  --workspace=app",
+    "db:studio":    "npm run db:studio --workspace=app"
   }
 }
