@@ -1,0 +1,215 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { store } from '../../lib/store';
+
+const cxp = await store.getCuentasPorPagar();
+
+const totalCxP      = cxp.reduce((s, c) => s + c.saldo, 0);
+const totalPendiente = cxp.filter(c => c.estadoPago === 'pendiente').reduce((s, c) => s + c.saldo, 0);
+const totalParcial   = cxp.filter(c => c.estadoPago === 'parcial').reduce((s, c) => s + c.saldo, 0);
+const totalPagada    = cxp.filter(c => c.estadoPago === 'pagada').length;
+
+// Group by supplier
+const byProveedor = new Map<string, { nombre: string; saldo: number; count: number }>();
+for (const c of cxp) {
+  if (c.estadoPago === 'pagada') continue;
+  const key = c.proveedorNombre;
+  const prev = byProveedor.get(key);
+  if (prev) { prev.saldo += c.saldo; prev.count += 1; }
+  else byProveedor.set(key, { nombre: c.proveedorNombre, saldo: c.saldo, count: 1 });
+}
+const proveedoresSorted = [...byProveedor.entries()].sort((a, b) => b[1].saldo - a[1].saldo);
+
+const badgeClass: Record<string, string> = {
+  pendiente: 'badge-warning',
+  parcial:   'badge-info',
+  pagada:    'badge-success',
+};
+const moneda = Astro.locals.moneda ?? { simbolo: '$' };
+const fmt = (n: number) => moneda.simbolo + n.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+---
+
+<AdminLayout title="Cuentas por Pagar">
+  <div class="page-header">
+    <div>
+      <h1>Cuentas por Pagar</h1>
+      <p class="text-muted">Compras recibidas y estado de pago a proveedores</p>
+    </div>
+    <a href="/compras" class="btn btn-secondary">
+      <span class="material-icons-round">local_shipping</span> Ver Compras
+    </a>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="summary-icon red"><span class="material-icons-round">account_balance</span></div>
+      <div>
+        <div class="summary-label">Total por Pagar</div>
+        <div class="summary-value">{fmt(totalCxP)}</div>
+        <div class="summary-sub">{cxp.filter(c => c.estadoPago !== 'pagada').length} compra(s) pendientes</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon yellow"><span class="material-icons-round">schedule</span></div>
+      <div>
+        <div class="summary-label">Sin ningún pago</div>
+        <div class="summary-value">{fmt(totalPendiente)}</div>
+        <div class="summary-sub">{cxp.filter(c => c.estadoPago === 'pendiente').length} compra(s)</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon blue"><span class="material-icons-round">payments</span></div>
+      <div>
+        <div class="summary-label">Pago parcial</div>
+        <div class="summary-value">{fmt(totalParcial)}</div>
+        <div class="summary-sub">{cxp.filter(c => c.estadoPago === 'parcial').length} compra(s)</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon green"><span class="material-icons-round">check_circle</span></div>
+      <div>
+        <div class="summary-label">Pagadas</div>
+        <div class="summary-value">{totalPagada}</div>
+        <div class="summary-sub">compra(s) liquidadas</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- Compras pendientes -->
+    <div class="card">
+      <h2>Compras por Pagar</h2>
+      {cxp.length === 0 ? (
+        <div class="empty-state">
+          <span class="material-icons-round">check_circle</span>
+          <p>No hay compras recibidas con saldo pendiente</p>
+        </div>
+      ) : (
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Compra</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Total</th>
+                <th>Pagado</th>
+                <th>Saldo</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {cxp.map(c => (
+                <tr>
+                  <td><a href={`/compras/${c.id}`} class="link">{c.numero}</a></td>
+                  <td style="font-size:0.85rem">{c.fecha}</td>
+                  <td style="font-size:0.85rem">{c.proveedorNombre}</td>
+                  <td><strong>{fmt(c.total)}</strong></td>
+                  <td style="color:var(--text-muted)">{fmt(c.totalPagado)}</td>
+                  <td><strong style={c.saldo > 0 ? 'color:#dc2626' : ''}>{fmt(c.saldo)}</strong></td>
+                  <td>
+                    <span class:list={['badge', badgeClass[c.estadoPago] ?? 'badge-secondary']}>
+                      {c.estadoPago}
+                    </span>
+                  </td>
+                  <td>
+                    {c.estadoPago !== 'pagada' && (
+                      <a href={`/pagos-proveedor/nuevo?compra=${c.id}`} class="btn btn-sm btn-primary">
+                        Pagar
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+
+    <!-- Por proveedor -->
+    <div class="card">
+      <h2>Saldo por Proveedor</h2>
+      {proveedoresSorted.length === 0 ? (
+        <div class="empty-state">
+          <p>Sin saldos pendientes</p>
+        </div>
+      ) : (
+        <div class="proveedor-list">
+          {proveedoresSorted.map(([_, info]) => (
+            <div class="proveedor-row">
+              <div class="proveedor-avatar">{info.nombre.charAt(0).toUpperCase()}</div>
+              <div class="proveedor-info">
+                <span class="proveedor-nombre">{info.nombre}</span>
+                <span class="proveedor-meta">{info.count} compra{info.count !== 1 ? 's' : ''} pendiente{info.count !== 1 ? 's' : ''}</span>
+              </div>
+              <div class="proveedor-saldo">
+                <span class="saldo-value">{fmt(info.saldo)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+  h1 { font-size:1.5rem; font-weight:700; margin:0; }
+  h2 { font-size:1rem; font-weight:600; margin:0 0 16px; }
+  .text-muted { color:var(--text-muted); font-size:0.875rem; margin:4px 0 0; }
+
+  .summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
+  .summary-card { background:white; border:1px solid var(--border); border-radius:var(--radius); padding:20px; display:flex; align-items:center; gap:16px; }
+  .summary-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .summary-icon.red    { background:#fee2e2; color:#dc2626; }
+  .summary-icon.yellow { background:#fef9c3; color:#ca8a04; }
+  .summary-icon.blue   { background:#dbeafe; color:#2563eb; }
+  .summary-icon.green  { background:#dcfce7; color:#16a34a; }
+  .summary-icon .material-icons-round { font-size:24px; }
+  .summary-label { font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
+  .summary-value { font-size:1.4rem; font-weight:700; line-height:1.2; }
+  .summary-sub { font-size:0.75rem; color:var(--text-muted); }
+
+  .two-col { display:grid; grid-template-columns:1fr 360px; gap:16px; }
+  .card { background:white; border-radius:var(--radius); border:1px solid var(--border); padding:24px; }
+  .table-wrapper { overflow-x:auto; margin:0 -24px; padding:0 24px; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.875rem; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  .link { color:var(--primary); text-decoration:none; }
+  .link:hover { text-decoration:underline; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:600; }
+  .badge-success   { background:#dcfce7; color:#16a34a; }
+  .badge-warning   { background:#fef9c3; color:#ca8a04; }
+  .badge-info      { background:#dbeafe; color:#2563eb; }
+  .badge-secondary { background:#f1f5f9; color:#64748b; }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:var(--radius); font-size:0.875rem; font-weight:500; border:none; cursor:pointer; text-decoration:none; transition:all .2s; }
+  .btn-primary { background:var(--primary); color:white; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-secondary { background:white; border:1px solid var(--border); color:var(--text); }
+  .btn-secondary:hover { background:#f8fafc; }
+  .btn-sm { padding:4px 10px; font-size:0.8rem; }
+
+  .proveedor-list { display:flex; flex-direction:column; gap:2px; }
+  .proveedor-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }
+  .proveedor-row:last-child { border-bottom:none; }
+  .proveedor-avatar { width:36px; height:36px; background:#fff7ed; color:#ea580c; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.9rem; flex-shrink:0; }
+  .proveedor-info { flex:1; min-width:0; }
+  .proveedor-nombre { display:block; font-weight:500; font-size:0.875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .proveedor-meta { font-size:0.75rem; color:var(--text-muted); }
+  .proveedor-saldo { text-align:right; flex-shrink:0; }
+  .saldo-value { display:block; font-weight:700; font-size:0.9rem; color:#dc2626; }
+
+  .empty-state { text-align:center; padding:40px 24px; color:var(--text-muted); }
+  .empty-state .material-icons-round { font-size:40px; margin-bottom:8px; opacity:.4; display:block; }
+
+  @media (max-width:1100px) {
+    .summary-grid { grid-template-columns:repeat(2,1fr); }
+    .two-col { grid-template-columns:1fr; }
+  }
+</style>

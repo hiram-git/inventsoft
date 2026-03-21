@@ -34,8 +34,10 @@ if (Astro.request.method === 'POST') {
         const iva = subtotal * (impuestoPorcentaje / 100);
         const total = subtotal + iva;
 
+        const proveedorId = formData.get('proveedorId')?.toString() ?? '';
         await store.createCompra({
           proveedorNombre,
+          proveedorId: proveedorId || undefined,
           almacenId,
           almacenNombre: almacen.nombre,
           items,
@@ -54,11 +56,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [almacenes, allProductos, impuestos, impuestoDefault] = await Promise.all([
+const [almacenes, allProductos, impuestos, impuestoDefault, proveedores] = await Promise.all([
   store.getAlmacenes(),
   store.getProductos(),
   store.getImpuestos(),
   store.getImpuestoDefault(),
+  store.getProveedores(),
 ]);
 const productos = allProductos.filter(p => p.activo);
 const moneda = Astro.locals.moneda ?? { simbolo: '$' };
@@ -76,13 +79,31 @@ const moneda = Astro.locals.moneda ?? { simbolo: '$' };
 
   <form method="POST" id="compraForm">
     <input type="hidden" name="items_json" id="itemsJson" value="[]" />
+    <input type="hidden" name="proveedorId" id="hiddenProveedorId" />
 
     <div class="card" style="margin-bottom:16px">
       <h2 style="font-size:1.1rem;margin-bottom:16px">Datos de la Compra</h2>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
         <div class="form-group">
           <label>Proveedor</label>
-          <input type="text" name="proveedorNombre" class="form-control" placeholder="Nombre del proveedor" required />
+          {proveedores.filter(p => p.activo).length > 0 ? (
+            <select name="proveedorId" id="proveedorSelect" class="form-control"
+              onchange="syncProveedorNombre(this)">
+              <option value="">— Proveedor eventual (sin registro) —</option>
+              {proveedores.filter(p => p.activo).map(p => (
+                <option value={p.id} data-nombre={p.nombre}>{p.nombre}</option>
+              ))}
+            </select>
+          ) : null}
+          <input type="text" name="proveedorNombre" id="proveedorNombreInput" class="form-control"
+            placeholder="Nombre del proveedor" required
+            style={proveedores.filter(p => p.activo).length > 0 ? "margin-top:6px" : ""}
+          />
+          {proveedores.filter(p => p.activo).length > 0 && (
+            <span style="font-size:0.75rem;color:var(--text-muted)">
+              Si seleccionas un proveedor del listado, el nombre se completa automáticamente. De lo contrario, escríbelo.
+            </span>
+          )}
         </div>
         <div class="form-group">
           <label>Almacén de destino</label>
@@ -190,6 +211,19 @@ const moneda = Astro.locals.moneda ?? { simbolo: '$' };
 </style>
 
 <script is:inline>
+  function syncProveedorNombre(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    var nameInput = document.getElementById('proveedorNombreInput');
+    var hiddenId = document.getElementById('hiddenProveedorId');
+    if (sel.value && opt.dataset.nombre) {
+      nameInput.value = opt.dataset.nombre;
+      hiddenId.value = sel.value;
+    } else {
+      nameInput.value = '';
+      hiddenId.value = '';
+    }
+  }
+
   let items = [];
   var __impuestoPct = 0;
   var __m = window.__moneda || { simbolo: '$' };

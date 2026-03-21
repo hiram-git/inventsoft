@@ -315,10 +315,24 @@ export const kardex = pgTable('kardex', {
   fecha: date('fecha').defaultNow().notNull(),
 });
 
+// --- Proveedores ---
+export const proveedores = pgTable('proveedores', {
+  id: serial('id').primaryKey(),
+  nombre: varchar('nombre', { length: 300 }).notNull(),
+  rfc: varchar('rfc', { length: 20 }).default(''),
+  contacto: varchar('contacto', { length: 200 }).default(''),
+  telefono: varchar('telefono', { length: 50 }).default(''),
+  email: varchar('email', { length: 200 }).default(''),
+  direccion: text('direccion').default(''),
+  notas: text('notas').default(''),
+  activo: boolean('activo').default(true).notNull(),
+});
+
 // --- Compras (ingresos de mercancía) ---
 export const compras = pgTable('compras', {
   id: serial('id').primaryKey(),
   numero: varchar('numero', { length: 20 }).notNull().unique(),
+  proveedorId: integer('proveedor_id'),            // FK nullable para compat con registros previos
   proveedorNombre: varchar('proveedor_nombre', { length: 300 }).notNull(),
   almacenId: integer('almacen_id').notNull(),
   almacenNombre: varchar('almacen_nombre', { length: 200 }).notNull(),
@@ -335,8 +349,25 @@ export const compras = pgTable('compras', {
   impuestoPorcentaje: numeric('impuesto_porcentaje', { precision: 5, scale: 2 }).default('16'),
   iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
   total: numeric('total', { precision: 12, scale: 2 }).notNull(),
-  estado: varchar('estado', { length: 20 }).notNull().default('borrador'),
+  estado: varchar('estado', { length: 20 }).notNull().default('borrador'), // borrador | recibida | cancelada
   fecha: date('fecha').defaultNow().notNull(),
+});
+
+// --- Pagos a Proveedores (Cuentas por Pagar) ---
+export const pagosProveedor = pgTable('pagos_proveedor', {
+  id: serial('id').primaryKey(),
+  numero: varchar('numero', { length: 20 }).notNull().unique(),
+  compraId: integer('compra_id').notNull(),
+  compraNumero: varchar('compra_numero', { length: 20 }).notNull(),
+  proveedorId: integer('proveedor_id'),
+  proveedorNombre: varchar('proveedor_nombre', { length: 300 }).notNull(),
+  monto: numeric('monto', { precision: 12, scale: 2 }).notNull(),
+  fecha: date('fecha').defaultNow().notNull(),
+  metodoPago: varchar('metodo_pago', { length: 50 }).default('transferencia'), // efectivo | transferencia | cheque | tarjeta
+  referencia: varchar('referencia', { length: 100 }).default(''),  // Nro cheque / transferencia
+  cuentaBancaria: varchar('cuenta_bancaria', { length: 200 }).default(''), // Banco / cuenta de origen
+  notas: text('notas').default(''),
+  estado: varchar('estado', { length: 20 }).default('aplicado'), // aplicado | cancelado
 });
 
 // --- Pedidos (reservas de inventario) ---
