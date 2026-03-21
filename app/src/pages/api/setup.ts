@@ -124,7 +124,19 @@ export const POST: APIRoute = async ({ request }) => {
       activo:   true,
     });
 
-    // ── 7. Marcar setup como completo ─────────────────────────────
+    // ── 7. Crear la tabla secuencias con valores iniciales ────────
+    await db.insert(schema.secuencias).values([
+      { tipo: 'FAC', siguiente: 1 },
+      { tipo: 'PED', siguiente: 1 },
+      { tipo: 'COM', siguiente: 1 },
+      { tipo: 'COT', siguiente: 1 },
+      { tipo: 'NC',  siguiente: 1 },
+      { tipo: 'COB', siguiente: 1 },
+      { tipo: 'PAP', siguiente: 1 },
+      { tipo: 'CMD', siguiente: 1 },
+    ]).onConflictDoNothing();
+
+    // ── 8. Marcar setup como completo ─────────────────────────────
     markSetupComplete();
 
     return json({ ok: true, message: 'Instalación completada exitosamente.' });

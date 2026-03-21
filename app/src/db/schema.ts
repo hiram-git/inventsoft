@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, boolean, numeric, integer, date, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, boolean, numeric, integer, date, jsonb, timestamp, unique } from 'drizzle-orm/pg-core';
 
 // --- Permisos ---
 export const permisos = pgTable('permisos', {
@@ -216,6 +216,8 @@ export const facturas = pgTable('facturas', {
   clienteNombre: varchar('cliente_nombre', { length: 300 }).notNull(),
   almacenId: integer('almacen_id'),
   almacenNombre: varchar('almacen_nombre', { length: 200 }).default(''),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   items: jsonb('items').$type<{
     tipo: 'producto' | 'servicio';
     productoId: string;
@@ -243,6 +245,8 @@ export const cobros = pgTable('cobros', {
   facturaNumero: varchar('factura_numero', { length: 20 }).notNull(),
   clienteId: integer('cliente_id').notNull(),
   clienteNombre: varchar('cliente_nombre', { length: 300 }).notNull(),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   monto: numeric('monto', { precision: 12, scale: 2 }).notNull(),
   fecha: date('fecha').defaultNow().notNull(),
   metodoPago: varchar('metodo_pago', { length: 50 }).notNull().default('efectivo'), // efectivo | transferencia | cheque | tarjeta
@@ -338,6 +342,8 @@ export const compras = pgTable('compras', {
   proveedorNombre: varchar('proveedor_nombre', { length: 300 }).notNull(),
   almacenId: integer('almacen_id').notNull(),
   almacenNombre: varchar('almacen_nombre', { length: 200 }).notNull(),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   items: jsonb('items').$type<{
     productoId: string;
     productoNombre: string;
@@ -363,6 +369,8 @@ export const pagosProveedor = pgTable('pagos_proveedor', {
   compraNumero: varchar('compra_numero', { length: 20 }).notNull(),
   proveedorId: integer('proveedor_id'),
   proveedorNombre: varchar('proveedor_nombre', { length: 300 }).notNull(),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   monto: numeric('monto', { precision: 12, scale: 2 }).notNull(),
   fecha: date('fecha').defaultNow().notNull(),
   metodoPago: varchar('metodo_pago', { length: 50 }).default('transferencia'), // efectivo | transferencia | cheque | tarjeta
@@ -380,6 +388,8 @@ export const pedidos = pgTable('pedidos', {
   clienteNombre: varchar('cliente_nombre', { length: 300 }).notNull(),
   almacenId: integer('almacen_id').notNull(),
   almacenNombre: varchar('almacen_nombre', { length: 200 }).notNull(),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   items: jsonb('items').$type<{
     productoId: string;
     productoNombre: string;
@@ -409,6 +419,8 @@ export const notasCredito = pgTable('notas_credito', {
   clienteNombre: varchar('cliente_nombre', { length: 300 }).notNull(),
   almacenId: integer('almacen_id'),
   almacenNombre: varchar('almacen_nombre', { length: 200 }).default(''),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   items: jsonb('items').$type<{
     tipo: 'producto' | 'servicio';
     productoId: string;
@@ -430,6 +442,8 @@ export const cotizaciones = pgTable('cotizaciones', {
   numero: varchar('numero', { length: 20 }).notNull().unique(),
   clienteId: integer('cliente_id').notNull(),
   clienteNombre: varchar('cliente_nombre', { length: 300 }).notNull(),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   items: jsonb('items').$type<{
     tipo: 'producto' | 'servicio';
     productoId: string;
@@ -474,6 +488,8 @@ export const comandas = pgTable('comandas', {
   numero: varchar('numero', { length: 20 }).notNull().unique(),
   pedidoId: integer('pedido_id'),
   pedidoNumero: varchar('pedido_numero', { length: 20 }).default(''),
+  sucursalId: integer('sucursal_id'),
+  sucursalNombre: varchar('sucursal_nombre', { length: 200 }).default(''),
   mesa: varchar('mesa', { length: 50 }).default(''),
   clienteNombre: varchar('cliente_nombre', { length: 300 }).default(''),
   items: jsonb('items').$type<{
@@ -491,4 +507,36 @@ export const comandas = pgTable('comandas', {
   listoAt: timestamp('listo_at', { withTimezone: true }),
   entregadoAt: timestamp('entregado_at', { withTimezone: true }),
   fecha: date('fecha').defaultNow().notNull(),
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SUCURSALES
+// ──────────────────────────────────────────────────────────────────────────────
+
+// --- Sucursales (ubicaciones de la empresa) ---
+export const sucursales = pgTable('sucursales', {
+  id: serial('id').primaryKey(),
+  nombre: varchar('nombre', { length: 200 }).notNull(),
+  descripcion: text('descripcion').default(''),
+  direccion: text('direccion').default(''),
+  telefono: varchar('telefono', { length: 50 }).default(''),
+  almacenId: integer('almacen_id'),              // almacén por defecto (nullable)
+  almacenNombre: varchar('almacen_nombre', { length: 200 }).default(''),
+  activo: boolean('activo').default(true).notNull(),
+});
+
+// --- Usuario ↔ Sucursal (asignación N:M) ---
+export const usuarioSucursales = pgTable('usuario_sucursales', {
+  id: serial('id').primaryKey(),
+  usuarioId: integer('usuario_id').notNull(),
+  sucursalId: integer('sucursal_id').notNull(),
+}, (t) => ({
+  unq: unique().on(t.usuarioId, t.sucursalId),
+}));
+
+// --- Secuencias (reemplaza el count(*)+1 frágil para numeración de documentos) ---
+// Una fila por tipo de documento; el UPDATE atómico evita race conditions.
+export const secuencias = pgTable('secuencias', {
+  tipo: varchar('tipo', { length: 20 }).primaryKey(), // 'FAC' | 'COM' | 'PED' | 'COT' | 'NC' | 'COB' | 'PAP'
+  siguiente: integer('siguiente').default(1).notNull(),
 });

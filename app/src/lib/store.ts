@@ -2,6 +2,45 @@ import { db } from '../db';
 import { eq, sql, and, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 
+// ── Secuencias helper ─────────────────────────────────────────────────────────
+// Returns the next available sequence number for a document type, atomically.
+// Falls back to count(*)+1 on first use (handles existing databases).
+async function _nextSecuencia(tipo: string): Promise<number> {
+  const updated = await db
+    .update(schema.secuencias)
+    .set({ siguiente: sql`${schema.secuencias.siguiente} + 1` })
+    .where(eq(schema.secuencias.tipo, tipo))
+    .returning({ siguiente: schema.secuencias.siguiente });
+
+  if (updated.length > 0) return updated[0].siguiente - 1;
+
+  // Row doesn't exist: seed from current count so existing numbering isn't broken
+  const countMap: Record<string, () => Promise<number>> = {
+    FAC: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.facturas))[0].c),
+    PED: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.pedidos))[0].c),
+    COM: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.compras))[0].c),
+    COT: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.cotizaciones))[0].c),
+    NC:  async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.notasCredito))[0].c),
+    COB: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.cobros))[0].c),
+    PAP: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.pagosProveedor))[0].c),
+    CMD: async () => Number((await db.select({ c: sql<number>`count(*)` }).from(schema.comandas))[0].c),
+  };
+  const existing = countMap[tipo] ? await countMap[tipo]() : 0;
+  const num = existing + 1;
+  try {
+    await db.insert(schema.secuencias).values({ tipo, siguiente: num + 1 });
+  } catch {
+    // Concurrent insert won – retry update
+    const retry = await db
+      .update(schema.secuencias)
+      .set({ siguiente: sql`${schema.secuencias.siguiente} + 1` })
+      .where(eq(schema.secuencias.tipo, tipo))
+      .returning({ siguiente: schema.secuencias.siguiente });
+    if (retry.length > 0) return retry[0].siguiente - 1;
+  }
+  return num;
+}
+
 // Re-export types inferred from schema
 export type User = typeof schema.usuarios.$inferSelect;
 export type Cliente = typeof schema.clientes.$inferSelect;
@@ -419,8 +458,10 @@ export const store = {
   },
 
   // --- Facturas ---
-  async getFacturas() {
-    const rows = await db.select().from(schema.facturas);
+  async getFacturas(sucursalId?: string) {
+    const rows = sucursalId
+      ? await db.select().from(schema.facturas).where(eq(schema.facturas.sucursalId, Number(sucursalId)))
+      : await db.select().from(schema.facturas);
     return rows.map(normalizeFactura);
   },
 
@@ -434,6 +475,8 @@ export const store = {
     clienteNombre: string;
     almacenId?: string;
     almacenNombre?: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     items: { productoId: string; productoNombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
     subtotal: number;
     iva: number;
@@ -445,9 +488,8 @@ export const store = {
     impuestoNombre?: string;
     impuestoPorcentaje?: number;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.facturas);
-    const count = Number(countResult[0].count);
-    const numero = `FAC-${String(count + 1).padStart(3, '0')}`;
+    const num = await _nextSecuencia('FAC');
+    const numero = `FAC-${String(num).padStart(3, '0')}`;
 
     const rows = await db.insert(schema.facturas).values({
       numero,
@@ -455,6 +497,8 @@ export const store = {
       clienteNombre: data.clienteNombre,
       almacenId: data.almacenId ? Number(data.almacenId) : null,
       almacenNombre: data.almacenNombre ?? '',
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       items: data.items,
       subtotal: String(data.subtotal),
       impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
@@ -713,8 +757,10 @@ export const store = {
   },
 
   // --- Compras ---
-  async getCompras() {
-    const rows = await db.select().from(schema.compras).orderBy(desc(schema.compras.id));
+  async getCompras(sucursalId?: string) {
+    const rows = sucursalId
+      ? await db.select().from(schema.compras).where(eq(schema.compras.sucursalId, Number(sucursalId))).orderBy(desc(schema.compras.id))
+      : await db.select().from(schema.compras).orderBy(desc(schema.compras.id));
     return rows.map(normalizeCompra);
   },
 
@@ -728,6 +774,8 @@ export const store = {
     proveedorNombre: string;
     almacenId: string;
     almacenNombre: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     items: { productoId: string; productoNombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
     subtotal: number;
     iva: number;
@@ -737,9 +785,8 @@ export const store = {
     impuestoNombre?: string;
     impuestoPorcentaje?: number;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.compras);
-    const count = Number(countResult[0].count);
-    const numero = `COM-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('COM');
+    const numero = `COM-${String(n).padStart(3, '0')}`;
 
     const rows = await db.insert(schema.compras).values({
       numero,
@@ -747,6 +794,8 @@ export const store = {
       proveedorNombre: data.proveedorNombre,
       almacenId: Number(data.almacenId),
       almacenNombre: data.almacenNombre,
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       items: data.items,
       subtotal: String(data.subtotal),
       impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
@@ -849,6 +898,8 @@ export const store = {
     compraNumero: string;
     proveedorId?: string;
     proveedorNombre: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     monto: number;
     fecha: string;
     metodoPago: string;
@@ -856,15 +907,16 @@ export const store = {
     cuentaBancaria?: string;
     notas?: string;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.pagosProveedor);
-    const count = Number(countResult[0].count);
-    const numero = `PAP-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('PAP');
+    const numero = `PAP-${String(n).padStart(3, '0')}`;
     const rows = await db.insert(schema.pagosProveedor).values({
       numero,
       compraId: Number(data.compraId),
       compraNumero: data.compraNumero,
       proveedorId: data.proveedorId ? Number(data.proveedorId) : null,
       proveedorNombre: data.proveedorNombre,
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       monto: String(data.monto),
       fecha: data.fecha,
       metodoPago: data.metodoPago,
@@ -920,8 +972,10 @@ export const store = {
   },
 
   // --- Pedidos ---
-  async getPedidos() {
-    const rows = await db.select().from(schema.pedidos).orderBy(desc(schema.pedidos.id));
+  async getPedidos(sucursalId?: string) {
+    const rows = sucursalId
+      ? await db.select().from(schema.pedidos).where(eq(schema.pedidos.sucursalId, Number(sucursalId))).orderBy(desc(schema.pedidos.id))
+      : await db.select().from(schema.pedidos).orderBy(desc(schema.pedidos.id));
     return rows.map(normalizePedido);
   },
 
@@ -935,6 +989,8 @@ export const store = {
     clienteNombre: string;
     almacenId: string;
     almacenNombre: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     items: { productoId: string; productoNombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
     subtotal: number;
     iva: number;
@@ -945,9 +1001,8 @@ export const store = {
     impuestoNombre?: string;
     impuestoPorcentaje?: number;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.pedidos);
-    const count = Number(countResult[0].count);
-    const numero = `PED-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('PED');
+    const numero = `PED-${String(n).padStart(3, '0')}`;
 
     const rows = await db.insert(schema.pedidos).values({
       numero,
@@ -955,6 +1010,8 @@ export const store = {
       clienteNombre: data.clienteNombre,
       almacenId: Number(data.almacenId),
       almacenNombre: data.almacenNombre,
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       items: data.items,
       subtotal: String(data.subtotal),
       impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
@@ -1093,8 +1150,10 @@ export const store = {
   },
 
   // --- Notas de Crédito ---
-  async getNotasCredito() {
-    const rows = await db.select().from(schema.notasCredito).orderBy(desc(schema.notasCredito.id));
+  async getNotasCredito(sucursalId?: string) {
+    const rows = sucursalId
+      ? await db.select().from(schema.notasCredito).where(eq(schema.notasCredito.sucursalId, Number(sucursalId))).orderBy(desc(schema.notasCredito.id))
+      : await db.select().from(schema.notasCredito).orderBy(desc(schema.notasCredito.id));
     return rows.map(normalizeNotaCredito);
   },
 
@@ -1112,9 +1171,8 @@ export const store = {
     const factura = await this.getFactura(facturaId);
     if (!factura || factura.estado === 'cancelada') return null;
 
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.notasCredito);
-    const count = Number(countResult[0].count);
-    const numero = `NC-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('NC');
+    const numero = `NC-${String(n).padStart(3, '0')}`;
     const fecha = new Date().toISOString().split('T')[0];
 
     const rows = await db.insert(schema.notasCredito).values({
@@ -1125,6 +1183,8 @@ export const store = {
       clienteNombre: factura.clienteNombre,
       almacenId: factura.almacenId ? Number(factura.almacenId) : null,
       almacenNombre: factura.almacenNombre ?? '',
+      sucursalId: (factura as any).sucursalId ? Number((factura as any).sucursalId) : null,
+      sucursalNombre: (factura as any).sucursalNombre ?? '',
       items: factura.items as typeof schema.notasCredito.$inferInsert['items'],
       subtotal: String(factura.subtotal),
       iva: String(factura.iva),
@@ -1167,14 +1227,16 @@ export const store = {
   },
 
   // --- Cobros ---
-  async getCobros(facturaId?: string) {
+  async getCobros(facturaId?: string, sucursalId?: string) {
     if (facturaId) {
       const rows = await db.select().from(schema.cobros)
         .where(eq(schema.cobros.facturaId, Number(facturaId)))
         .orderBy(desc(schema.cobros.id));
       return rows.map(normalizeCobro);
     }
-    const rows = await db.select().from(schema.cobros).orderBy(desc(schema.cobros.id));
+    const rows = sucursalId
+      ? await db.select().from(schema.cobros).where(eq(schema.cobros.sucursalId, Number(sucursalId))).orderBy(desc(schema.cobros.id))
+      : await db.select().from(schema.cobros).orderBy(desc(schema.cobros.id));
     return rows.map(normalizeCobro);
   },
 
@@ -1243,9 +1305,8 @@ export const store = {
       return { ok: false, error: `Monto inválido. Saldo pendiente: ${saldoInfo?.saldo?.toFixed(2) ?? 0}` };
     }
 
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.cobros);
-    const count = Number(countResult[0].count);
-    const numero = `COB-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('COB');
+    const numero = `COB-${String(n).padStart(3, '0')}`;
 
     const rows = await db.insert(schema.cobros).values({
       numero,
@@ -1253,6 +1314,8 @@ export const store = {
       facturaNumero: factura.numero,
       clienteId: Number(factura.clienteId),
       clienteNombre: factura.clienteNombre,
+      sucursalId: (factura as any).sucursalId ? Number((factura as any).sucursalId) : null,
+      sucursalNombre: (factura as any).sucursalNombre ?? '',
       monto: String(data.monto),
       fecha: data.fecha,
       metodoPago: data.metodoPago,
@@ -1342,8 +1405,10 @@ export const store = {
   },
 
   // --- Cotizaciones ---
-  async getCotizaciones() {
-    const rows = await db.select().from(schema.cotizaciones).orderBy(desc(schema.cotizaciones.id));
+  async getCotizaciones(sucursalId?: string) {
+    const rows = sucursalId
+      ? await db.select().from(schema.cotizaciones).where(eq(schema.cotizaciones.sucursalId, Number(sucursalId))).orderBy(desc(schema.cotizaciones.id))
+      : await db.select().from(schema.cotizaciones).orderBy(desc(schema.cotizaciones.id));
     return rows.map(normalizeCotizacion);
   },
 
@@ -1362,6 +1427,8 @@ export const store = {
   async createCotizacion(data: {
     clienteId: string;
     clienteNombre: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     items: { tipo: 'producto' | 'servicio'; productoId: string; productoNombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
     subtotal: number;
     iva: number;
@@ -1373,14 +1440,15 @@ export const store = {
     impuestoNombre?: string;
     impuestoPorcentaje?: number;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.cotizaciones);
-    const count = Number(countResult[0].count);
-    const numero = `COT-${String(count + 1).padStart(3, '0')}`;
+    const n = await _nextSecuencia('COT');
+    const numero = `COT-${String(n).padStart(3, '0')}`;
 
     const rows = await db.insert(schema.cotizaciones).values({
       numero,
       clienteId: Number(data.clienteId),
       clienteNombre: data.clienteNombre,
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       items: data.items,
       subtotal: String(data.subtotal),
       impuestoId: data.impuestoId ? Number(data.impuestoId) : null,
@@ -1566,10 +1634,15 @@ export const store = {
   },
 
   // ── Comandas (órdenes de cocina) ──────────────────────────────────────────
-  async getComandasActivas() {
-    const rows = await db.select().from(schema.comandas)
-      .where(sql`${schema.comandas.estado} NOT IN ('entregada', 'cancelada')`)
-      .orderBy(schema.comandas.creadoAt);
+  async getComandasActivas(sucursalId?: string) {
+    const baseWhere = sql`${schema.comandas.estado} NOT IN ('entregada', 'cancelada')`;
+    const rows = sucursalId
+      ? await db.select().from(schema.comandas)
+          .where(and(baseWhere, eq(schema.comandas.sucursalId, Number(sucursalId))))
+          .orderBy(schema.comandas.creadoAt)
+      : await db.select().from(schema.comandas)
+          .where(baseWhere)
+          .orderBy(schema.comandas.creadoAt);
     return rows.map(normalizeComanda);
   },
 
@@ -1587,21 +1660,24 @@ export const store = {
   async crearComanda(data: {
     pedidoId?: string;
     pedidoNumero?: string;
+    sucursalId?: string;
+    sucursalNombre?: string;
     mesa?: string;
     clienteNombre?: string;
     items: { productoId: string; productoNombre: string; cantidad: number; notas?: string }[];
     prioridad?: string;
     notas?: string;
   }) {
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.comandas);
-    const count = Number(countResult[0].count);
-    const numero = `CMD-${String(count + 1).padStart(4, '0')}`;
+    const n = await _nextSecuencia('CMD');
+    const numero = `CMD-${String(n).padStart(4, '0')}`;
     const fecha = new Date().toISOString().split('T')[0];
 
     const rows = await db.insert(schema.comandas).values({
       numero,
       pedidoId: data.pedidoId ? Number(data.pedidoId) : null,
       pedidoNumero: data.pedidoNumero ?? '',
+      sucursalId: data.sucursalId ? Number(data.sucursalId) : null,
+      sucursalNombre: data.sucursalNombre ?? '',
       mesa: data.mesa ?? '',
       clienteNombre: data.clienteNombre ?? '',
       items: data.items.map(i => ({ ...i, notas: i.notas ?? '' })),
@@ -1752,6 +1828,71 @@ export const store = {
 
   async deleteMoneda(id: string) {
     const rows = await db.delete(schema.monedas).where(eq(schema.monedas.id, Number(id))).returning();
+    return rows.length > 0;
+  },
+
+  // ── Sucursales ────────────────────────────────────────────────────────────
+
+  async getSucursales() {
+    const rows = await db.select().from(schema.sucursales).orderBy(schema.sucursales.nombre);
+    return rows.map(normalizeId);
+  },
+
+  async getSucursal(id: string) {
+    const rows = await db.select().from(schema.sucursales).where(eq(schema.sucursales.id, Number(id)));
+    return rows[0] ? normalizeId(rows[0]) : undefined;
+  },
+
+  async createSucursal(data: { nombre: string; descripcion?: string; direccion?: string; telefono?: string; almacenId?: string; almacenNombre?: string; activo?: boolean }) {
+    const rows = await db.insert(schema.sucursales).values({
+      nombre: data.nombre,
+      descripcion: data.descripcion ?? '',
+      direccion: data.direccion ?? '',
+      telefono: data.telefono ?? '',
+      almacenId: data.almacenId ? Number(data.almacenId) : null,
+      almacenNombre: data.almacenNombre ?? '',
+      activo: data.activo ?? true,
+    }).returning();
+    return normalizeId(rows[0]);
+  },
+
+  async updateSucursal(id: string, data: Record<string, unknown>) {
+    const rows = await db.update(schema.sucursales).set(data).where(eq(schema.sucursales.id, Number(id))).returning();
+    return rows[0] ? normalizeId(rows[0]) : null;
+  },
+
+  async deleteSucursal(id: string) {
+    const rows = await db.delete(schema.sucursales).where(eq(schema.sucursales.id, Number(id))).returning();
+    return rows.length > 0;
+  },
+
+  // ── Asignación Usuario ↔ Sucursal ─────────────────────────────────────────
+
+  async getSucursalesUsuario(usuarioId: string) {
+    const asignaciones = await db.select().from(schema.usuarioSucursales)
+      .where(eq(schema.usuarioSucursales.usuarioId, Number(usuarioId)));
+    if (asignaciones.length === 0) return [];
+    const ids = asignaciones.map(a => a.sucursalId);
+    const rows = await db.select().from(schema.sucursales)
+      .where(sql`${schema.sucursales.id} = ANY(${ids})`);
+    return rows.map(normalizeId);
+  },
+
+  async asignarSucursalUsuario(usuarioId: string, sucursalId: string) {
+    const rows = await db.insert(schema.usuarioSucursales)
+      .values({ usuarioId: Number(usuarioId), sucursalId: Number(sucursalId) })
+      .onConflictDoNothing()
+      .returning();
+    return rows[0] ? normalizeId(rows[0]) : null;
+  },
+
+  async desasignarSucursalUsuario(usuarioId: string, sucursalId: string) {
+    const rows = await db.delete(schema.usuarioSucursales)
+      .where(and(
+        eq(schema.usuarioSucursales.usuarioId, Number(usuarioId)),
+        eq(schema.usuarioSucursales.sucursalId, Number(sucursalId)),
+      ))
+      .returning();
     return rows.length > 0;
   },
 };

@@ -27,10 +27,14 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ error: 'Cuenta desactivada. Contacte al administrador.' }, 403);
     }
 
-    const token = createToken(String(user.id));
+    const userId = String(user.id);
+    const sucursales = await store.getSucursalesUsuario(userId);
+    const token = createToken(userId, sucursales.length === 1 ? String(sucursales[0].id) : null);
+
     return json({
       token,
-      user: { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
+      user:      { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
+      sucursales: sucursales.map(s => ({ id: String(s.id), nombre: s.nombre })),
     });
   } catch {
     return json({ error: 'Error del sistema' }, 500);
