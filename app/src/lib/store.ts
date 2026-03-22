@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { eq, sql, and, desc } from 'drizzle-orm';
+import { eq, sql, and, desc, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema';
 
 // ── Secuencias helper ─────────────────────────────────────────────────────────
@@ -1874,7 +1874,7 @@ export const store = {
     if (asignaciones.length === 0) return [];
     const ids = asignaciones.map(a => a.sucursalId);
     const rows = await db.select().from(schema.sucursales)
-      .where(sql`${schema.sucursales.id} = ANY(${ids})`);
+      .where(inArray(schema.sucursales.id, ids));
     return rows.map(normalizeId);
   },
 
