@@ -1,16 +1,21 @@
 ---
-import { login, selectEmpresa } from '../lib/auth';
+import { login, selectEmpresa, logout, getSession } from '../lib/auth';
 import { authDb } from '../db';
 import { eq } from 'drizzle-orm';
 import { usuariosGlobal, usuarioEmpresas, empresasRegistry } from '../db/auth-schema';
 import bcrypt from 'bcryptjs';
 import '../styles/global.css';
 
-// If already logged in and empresa cookie set, redirect to dashboard
+// Si hay cookies de sesión, verificar que sigan siendo válidas antes de redirigir
 const existingUserId  = Astro.cookies.get('session_user_id')?.value;
 const existingEmpresa = Astro.cookies.get('session_empresa')?.value;
 if (existingUserId && existingEmpresa) {
-  return Astro.redirect('/dashboard');
+  try {
+    const session = await getSession(Astro.cookies);
+    if (session) return Astro.redirect('/dashboard');
+  } catch { /* sesión inválida */ }
+  // Cookies obsoletas — limpiar para evitar bucle
+  logout(Astro.cookies);
 }
 
 // ── Tipos de error y sus mensajes ─────────────────────────────────────────
