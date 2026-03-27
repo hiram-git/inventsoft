@@ -122,6 +122,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // ── Session ──────────────────────────────────────────────────────────────
     const session = await getSession(context.cookies);
     if (!session) {
+      // Borrar cookies obsoletas para romper posibles bucles de redirección
+      context.cookies.delete('session_user_id',    { path: '/' });
+      context.cookies.delete('session_empresa',    { path: '/' });
+      context.cookies.delete('session_sucursal_id',{ path: '/' });
       return context.redirect('/login');
     }
 
